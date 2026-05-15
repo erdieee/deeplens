@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">DeepLens logo</title>
+  <desc id="desc">A compact graphite app icon with a blue lens mark.</desc>
+  <defs>
+    <linearGradient id="surface" x1="172" y1="96" x2="852" y2="928" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#262a31"/>
+      <stop offset="0.52" stop-color="#12151b"/>
+      <stop offset="1" stop-color="#07090d"/>
+    </linearGradient>
+    <linearGradient id="lens" x1="292" y1="292" x2="710" y2="766" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d6e4ff"/>
+      <stop offset="0.48" stop-color="#8fa9df"/>
+      <stop offset="1" stop-color="#52668f"/>
+    </linearGradient>
+    <linearGradient id="beam" x1="330" y1="212" x2="694" y2="812" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#9db6ee" stop-opacity="0.92"/>
+      <stop offset="1" stop-color="#9db6ee" stop-opacity="0.18"/>
+    </linearGradient>
+    <filter id="soft-shadow" x="-16%" y="-16%" width="132%" height="132%">
+      <feDropShadow dx="0" dy="28" stdDeviation="36" flood-color="#000000" flood-opacity="0.34"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" rx="226" fill="url(#surface)"/>
+  <rect x="38" y="38" width="948" height="948" rx="202" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="2"/>
+
+  <g filter="url(#soft-shadow)">
+    <path d="M620 620 790 790" fill="none" stroke="#0d1016" stroke-width="112" stroke-linecap="round"/>
+    <circle cx="455" cy="455" r="254" fill="#0d1016"/>
+    <circle cx="455" cy="455" r="215" fill="none" stroke="url(#lens)" stroke-width="78"/>
+    <path d="M257 358c35-73 110-124 197-124 58 0 111 22 150 59" fill="none" stroke="#ffffff" stroke-opacity="0.45" stroke-width="34" stroke-linecap="round"/>
+    <path d="M620 620 790 790" fill="none" stroke="url(#lens)" stroke-width="86" stroke-linecap="round"/>
+    <path d="M638 638 775 775" fill="none" stroke="#f2f6ff" stroke-opacity="0.30" stroke-width="24" stroke-linecap="round"/>
+    <circle cx="455" cy="455" r="129" fill="#0b0e14" stroke="#1f2635" stroke-width="4"/>
+    <circle cx="455" cy="455" r="62" fill="#9db6ee" fill-opacity="0.16"/>
+  </g>
+</svg>
