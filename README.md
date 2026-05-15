@@ -161,8 +161,6 @@ delay. Both are configurable.
 - `Folders`: search folder names with `fd`
 - `Files`: search file contents with `rga`
 
-File-type filters appear only when matching result types exist.
-
 ## Query Syntax
 
 ```text
@@ -334,6 +332,41 @@ Set the terminal app name:
 ```text
 /set terminal_app iTerm
 ```
+
+## Roadmap
+
+DeepLens already covers the core local-search workflow. The next work should
+focus on the small features that make Spotlight, Alfred, and Raycast feel fast
+in daily use.
+
+### Top Priority
+
+- [ ] **Better app launching**: improve app ranking, aliases, and matching so
+  common apps open reliably from a few letters.
+- [ ] **Fuzzy matching**: tolerate small typos, missing separators, and partial
+  word matches without making results noisy.
+- [ ] **Recent and pinned results**: remember frequently opened files, folders,
+  and apps so repeated work is faster than a fresh search.
+- [ ] **Quick preview**: preview the selected file with a shortcut before opening
+  it, similar to Quick Look.
+- [ ] **Actions menu**: add a small action picker for selected results, such as
+  open, reveal, copy path, copy filename, open terminal here, and show info.
+- [ ] **Cleaner mode controls**: replace extra chips with one simple search mode
+  control and keep advanced filters in query syntax.
+- [ ] **Clipboard history**: search and paste recently copied text.
+- [ ] **Calculator and unit conversion**: evaluate quick math and conversions
+  directly from the search box.
+- [ ] **Web search shortcuts**: open configured searches such as Google, GitHub,
+  YouTube, or documentation with a short prefix.
+- [ ] **Custom commands**: run user-defined commands or scripts with arguments.
+
+### Later
+
+- [ ] **Polished packaging**: ship a signed macOS app, Homebrew cask, bundled
+  icon, and clearer setup so users do not have to think about helper tools.
+- [ ] Optional lightweight indexing for faster repeated searches.
+- [ ] Linux and Windows desktop integration.
+- [ ] OCR and semantic search as optional features, not part of the default core.
 
 ## Development
 
