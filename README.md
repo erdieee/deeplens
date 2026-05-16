@@ -350,9 +350,9 @@ in daily use.
 
 ### Top Priority
 
-- [ ] **Better app launching**: improve app ranking, aliases, and matching so
+- [x] **Better app launching**: improve app ranking, aliases, and matching so
   common apps open reliably from a few letters.
-- [ ] **Fuzzy matching**: tolerate small typos, missing separators, and partial
+- [x] **Fuzzy matching**: tolerate small typos, missing separators, and partial
   word matches without making results noisy.
 - [ ] **Recent and pinned results**: remember frequently opened files, folders,
   and apps so repeated work is faster than a fresh search.
