@@ -213,7 +213,7 @@ Open settings with `Cmd+,`.
 Settings are grouped into:
 
 - `General`: result limits, debounce, minimum query length, window sizes,
-  result row height, terminal app, excluded folders
+  result row height, terminal app, excluded folders, broad-search limits
 - `Style`: colors for the palette, text, chips, selected rows, and highlights
 - `Shortcuts`: global and in-app shortcuts
 
@@ -229,6 +229,8 @@ You can also update individual settings from the search box:
 /set result_row_height 104
 /set terminal_app iTerm
 /set excluded_folders Library, .Trash, node_modules, target, .git
+/set max_search_events_per_tick 160
+/set search_event_limit_multiplier 20
 /set global_shortcut cmd+shift+space
 ```
 
@@ -240,6 +242,8 @@ You can also update individual settings from the search box:
 - The first visible result is highlighted automatically for each search.
 - Multiple matches in the same file are grouped.
 - The visible result list is capped by `max_displayed_results`.
+- Broad searches are bounded by `max_search_events_per_tick` and
+  `search_event_limit_multiplier`.
 - Invalid JSON lines from `rga` are ignored.
 
 ## Performance
@@ -252,9 +256,14 @@ To keep searches responsive, DeepLens:
 - debounces typing
 - cancels old searches when the query changes
 - kills the full Unix process group on cancel, including child tools
+- treats `/` as a safe computer scope: app search stays global, while file and
+  folder search use the user's home folder instead of recursively walking the
+  literal filesystem root
 - skips configured heavy folders such as caches, `.Trash`, `.git`,
   `node_modules`, and `target`
 - limits large files passed to `rga`
+- processes streamed matches in bounded UI batches, so broad queries do not
+  freeze the window
 - caps grouped visible results
 
 The skipped folder list is configurable in Settings as `excluded_folders`. It

@@ -3,6 +3,8 @@ use crate::settings::SettingsForm;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsField {
     MaxDisplayedResults,
+    MaxSearchEventsPerTick,
+    SearchEventLimitMultiplier,
     SearchDebounceMs,
     DoubleClickMs,
     MinQueryChars,
@@ -40,6 +42,8 @@ impl SettingsField {
     pub(super) fn canonical_name(self) -> &'static str {
         match self {
             SettingsField::MaxDisplayedResults => "max_displayed_results",
+            SettingsField::MaxSearchEventsPerTick => "max_search_events_per_tick",
+            SettingsField::SearchEventLimitMultiplier => "search_event_limit_multiplier",
             SettingsField::SearchDebounceMs => "search_debounce_ms",
             SettingsField::DoubleClickMs => "double_click_ms",
             SettingsField::MinQueryChars => "min_query_chars",
@@ -77,6 +81,12 @@ impl SettingsField {
     fn from_name(name: &str) -> Option<Self> {
         match normalized_setting_name(name).as_str() {
             "maxdisplayedresults" | "maxresults" => Some(Self::MaxDisplayedResults),
+            "maxsearcheventspertick" | "maxeventspertick" | "eventbatch" => {
+                Some(Self::MaxSearchEventsPerTick)
+            }
+            "searcheventlimitmultiplier" | "eventlimitmultiplier" | "matchlimitmultiplier" => {
+                Some(Self::SearchEventLimitMultiplier)
+            }
             "searchdebouncems" | "debouncems" | "debounce" => Some(Self::SearchDebounceMs),
             "doubleclickms" | "doubleclick" => Some(Self::DoubleClickMs),
             "minquerychars" | "minchars" => Some(Self::MinQueryChars),
@@ -198,6 +208,8 @@ pub(super) fn update_settings_form_value(
 ) {
     match field {
         SettingsField::MaxDisplayedResults => form.max_displayed_results = value,
+        SettingsField::MaxSearchEventsPerTick => form.max_search_events_per_tick = value,
+        SettingsField::SearchEventLimitMultiplier => form.search_event_limit_multiplier = value,
         SettingsField::SearchDebounceMs => form.search_debounce_ms = value,
         SettingsField::DoubleClickMs => form.double_click_ms = value,
         SettingsField::MinQueryChars => form.min_query_chars = value,
@@ -241,6 +253,8 @@ fn normalized_setting_name(name: &str) -> String {
 
 const SETTINGS_COMMAND_NAMES: &[&str] = &[
     "max_displayed_results",
+    "max_search_events_per_tick",
+    "search_event_limit_multiplier",
     "search_debounce_ms",
     "double_click_ms",
     "min_query_chars",
@@ -320,6 +334,22 @@ mod tests {
             Some(SetCommand::Ready {
                 field: SettingsField::ExcludedFolders,
                 value: String::from("node_modules, target"),
+            })
+        );
+
+        assert_eq!(
+            parse_set_command("/set event-batch 120"),
+            Some(SetCommand::Ready {
+                field: SettingsField::MaxSearchEventsPerTick,
+                value: String::from("120"),
+            })
+        );
+
+        assert_eq!(
+            parse_set_command("/set match-limit-multiplier 10"),
+            Some(SetCommand::Ready {
+                field: SettingsField::SearchEventLimitMultiplier,
+                value: String::from("10"),
             })
         );
     }

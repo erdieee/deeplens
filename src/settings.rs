@@ -8,6 +8,8 @@ use std::path::PathBuf;
 #[serde(default)]
 pub struct AppSettings {
     pub max_displayed_results: usize,
+    pub max_search_events_per_tick: usize,
+    pub search_event_limit_multiplier: usize,
     pub search_debounce_ms: u64,
     pub double_click_ms: u64,
     pub min_query_chars: usize,
@@ -45,6 +47,8 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             max_displayed_results: 300,
+            max_search_events_per_tick: 160,
+            search_event_limit_multiplier: 20,
             search_debounce_ms: 650,
             double_click_ms: 420,
             min_query_chars: 3,
@@ -85,6 +89,8 @@ impl Default for AppSettings {
 #[derive(Debug, Clone)]
 pub struct SettingsForm {
     pub max_displayed_results: String,
+    pub max_search_events_per_tick: String,
+    pub search_event_limit_multiplier: String,
     pub search_debounce_ms: String,
     pub double_click_ms: String,
     pub min_query_chars: String,
@@ -122,6 +128,8 @@ impl From<&AppSettings> for SettingsForm {
     fn from(settings: &AppSettings) -> Self {
         Self {
             max_displayed_results: settings.max_displayed_results.to_string(),
+            max_search_events_per_tick: settings.max_search_events_per_tick.to_string(),
+            search_event_limit_multiplier: settings.search_event_limit_multiplier.to_string(),
             search_debounce_ms: settings.search_debounce_ms.to_string(),
             double_click_ms: settings.double_click_ms.to_string(),
             min_query_chars: settings.min_query_chars.to_string(),
@@ -161,6 +169,14 @@ impl SettingsForm {
     pub fn parse(&self) -> Result<AppSettings, String> {
         let settings = AppSettings {
             max_displayed_results: parse_usize(&self.max_displayed_results, "Max results")?,
+            max_search_events_per_tick: parse_usize(
+                &self.max_search_events_per_tick,
+                "Max search events per tick",
+            )?,
+            search_event_limit_multiplier: parse_usize(
+                &self.search_event_limit_multiplier,
+                "Search event limit multiplier",
+            )?,
             search_debounce_ms: parse_u64(&self.search_debounce_ms, "Debounce")?,
             double_click_ms: parse_u64(&self.double_click_ms, "Double-click window")?,
             min_query_chars: parse_usize(&self.min_query_chars, "Minimum query characters")?,
@@ -205,6 +221,18 @@ impl SettingsForm {
 
         if settings.max_displayed_results == 0 {
             return Err(String::from("Max results must be at least 1."));
+        }
+
+        if settings.max_search_events_per_tick == 0 {
+            return Err(String::from(
+                "Max search events per tick must be at least 1.",
+            ));
+        }
+
+        if settings.search_event_limit_multiplier == 0 {
+            return Err(String::from(
+                "Search event limit multiplier must be at least 1.",
+            ));
         }
 
         if settings.min_query_chars == 0 {

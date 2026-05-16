@@ -1,3 +1,4 @@
+use crate::app_search::app_match_score;
 use crate::types::{GroupedSearchResult, SearchResult, SearchResultKind};
 
 use std::cmp::Reverse;
@@ -10,6 +11,8 @@ pub fn insert_result(
     query: &str,
     exact_phrase: Option<&str>,
 ) {
+    let mut should_sort = false;
+
     if let Some(existing) = groups.iter_mut().find(|group| group.path == result.path) {
         existing.match_count += 1;
 
@@ -19,6 +22,7 @@ pub fn insert_result(
             existing.snippet = result.snippet;
             existing.score = candidate_score;
             existing.icon_path = result.icon_path;
+            should_sort = true;
         }
     } else {
         groups.push(GroupedSearchResult {
@@ -30,9 +34,12 @@ pub fn insert_result(
             kind: result.kind,
             icon_path: result.icon_path,
         });
+        should_sort = true;
     }
 
-    groups.sort_by_key(|group| Reverse(group.score));
+    if should_sort {
+        groups.sort_by_key(|group| Reverse(group.score));
+    }
 }
 
 fn score_result(result: &SearchResult, query: &str, exact_phrase: Option<&str>) -> i64 {
@@ -50,6 +57,7 @@ fn score_result(result: &SearchResult, query: &str, exact_phrase: Option<&str>) 
 
     if result.kind == SearchResultKind::Application {
         score += 900;
+        score += app_match_score(&result.path, &query);
     }
 
     if !query.is_empty() {

@@ -1,3 +1,4 @@
+use crate::app_search::{app_display_name, app_match_score};
 use crate::types::{SearchEvent, SearchMode, SearchResult, SearchResultKind};
 
 use anyhow::{Context, Result};
@@ -23,7 +24,7 @@ const RGA_MISSING_MESSAGE: &str =
 #[derive(Debug, Clone)]
 pub struct SearchOptions {
     pub query: String,
-    pub folder: PathBuf,
+    pub file_folder_scope: PathBuf,
     pub exact: bool,
     pub include_globs: Vec<String>,
     pub excluded_folders: Vec<String>,
@@ -180,19 +181,14 @@ fn collect_application_matches(
         };
 
         let path = entry.path();
-        let name = path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or_default();
-
         if is_app_bundle(&path) {
-            if name.to_ascii_lowercase().contains(query)
+            if app_match_score(&path, query) > 0
                 && sender
                     .send(SearchEvent::Result(SearchResult {
                         icon_path: application_icon_png(&path),
+                        snippet: format!("Application: {}", app_display_name(&path)),
                         path,
                         line_number: None,
-                        snippet: String::from("Application"),
                         kind: SearchResultKind::Application,
                     }))
                     .is_err()
@@ -360,7 +356,7 @@ fn run_rga(
             .arg(format!("!{}/**", folder.trim_matches('/')));
     }
 
-    command.arg(&options.query).arg(&options.folder);
+    command.arg(&options.query).arg(&options.file_folder_scope);
 
     run_command(command, children, cancel_requested, |stdout| {
         read_rga_stdout(stdout, sender)
@@ -389,7 +385,7 @@ fn run_fd(
         command.arg("--exclude").arg(folder);
     }
 
-    command.arg(&options.query).arg(&options.folder);
+    command.arg(&options.query).arg(&options.file_folder_scope);
 
     run_command(command, children, cancel_requested, |stdout| {
         read_fd_stdout(stdout, sender)

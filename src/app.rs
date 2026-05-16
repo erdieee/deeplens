@@ -35,7 +35,6 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 const SCROLL_KEEP_VISIBLE_MARGIN_ROWS: f32 = 2.0;
-
 const SURFACE: Color = Color::from_rgb(0.065, 0.068, 0.078);
 const PROMPT: Color = Color::from_rgb(0.070, 0.073, 0.083);
 const TEXT: Color = Color::from_rgb(0.88, 0.88, 0.86);
@@ -47,7 +46,6 @@ const CHIP: Color = Color::from_rgb(0.14, 0.145, 0.155);
 const ACCENT: Color = Color::from_rgb(0.46, 0.56, 0.74);
 const HIGHLIGHT: Color = Color::from_rgb(0.70, 0.78, 0.95);
 const ERROR: Color = Color::from_rgb(0.96, 0.44, 0.38);
-
 pub fn run() -> iced::Result {
     iced::daemon(DeeplensApp::new, DeeplensApp::update, DeeplensApp::view)
         .title(title)
@@ -802,6 +800,18 @@ impl DeeplensApp {
                 SettingsField::MaxDisplayedResults,
             ),
             settings_field(
+                "Search events per tick",
+                &self.settings_form.max_search_events_per_tick,
+                "Maximum streamed result events the UI processes per update.",
+                SettingsField::MaxSearchEventsPerTick,
+            ),
+            settings_field(
+                "Search event limit",
+                &self.settings_form.search_event_limit_multiplier,
+                "Multiplier for raw streamed matches before a broad search is stopped.",
+                SettingsField::SearchEventLimitMultiplier,
+            ),
+            settings_field(
                 "Debounce ms",
                 &self.settings_form.search_debounce_ms,
                 "Wait time after typing before a search starts.",
@@ -1162,6 +1172,7 @@ impl DeeplensApp {
         }
 
         let folder = folder.canonicalize().unwrap_or(folder);
+        let file_folder_scope = file_folder_scope_for(&folder);
 
         self.clear_results();
         self.last_search_query = self.query.trim().to_owned();
@@ -1173,7 +1184,7 @@ impl DeeplensApp {
 
         match search::start_search(SearchOptions {
             query: parsed.search_text,
-            folder: folder.clone(),
+            file_folder_scope: file_folder_scope.clone(),
             exact: parsed.exact_phrase.is_some(),
             include_globs: search_filter.search_globs(),
             excluded_folders: self.settings.excluded_folder_patterns(),
@@ -1182,7 +1193,14 @@ impl DeeplensApp {
             Ok(handle) => {
                 self.search = Some(handle);
                 self.running = true;
-                self.status = format!("Searching {}…", self.scope_label_for(&folder));
+                self.status = if folder == Path::new("/") && file_folder_scope != folder {
+                    format!(
+                        "Searching apps and {}…",
+                        self.scope_label_for(&file_folder_scope)
+                    )
+                } else {
+                    format!("Searching {}…", self.scope_label_for(&folder))
+                };
             }
             Err(error) => {
                 self.search = None;
@@ -1287,8 +1305,20 @@ impl DeeplensApp {
         }
 
         let mut outcome = None;
+        let mut drained_events = 0;
+        let search_event_limit = self
+            .settings
+            .max_displayed_results
+            .saturating_mul(self.settings.search_event_limit_multiplier)
+            .max(self.settings.max_displayed_results);
 
-        while let Some(event) = self.search.as_ref().and_then(SearchHandle::try_recv) {
+        while drained_events < self.settings.max_search_events_per_tick {
+            let Some(event) = self.search.as_ref().and_then(SearchHandle::try_recv) else {
+                break;
+            };
+
+            drained_events += 1;
+
             match event {
                 SearchEvent::Result(result) => {
                     self.result_count += 1;
@@ -1314,6 +1344,11 @@ impl DeeplensApp {
 
                     if self.results.len() >= self.settings.max_displayed_results {
                         outcome = Some(SearchOutcome::Finished);
+                        break;
+                    }
+
+                    if self.result_count >= search_event_limit {
+                        outcome = Some(SearchOutcome::Limited);
                         break;
                     }
                 }
@@ -1344,6 +1379,16 @@ impl DeeplensApp {
                         String::from("No results")
                     } else {
                         found_status(self.result_count, self.visible_result_count())
+                    }
+                }
+                SearchOutcome::Limited => {
+                    if self.results.len() >= self.settings.max_displayed_results {
+                        format!(
+                            "Showing first {} files",
+                            self.settings.max_displayed_results
+                        )
+                    } else {
+                        format!("Showing first {} matches", self.result_count)
                     }
                 }
                 SearchOutcome::Cancelled => String::from("Search cancelled"),
@@ -1940,6 +1985,7 @@ impl DeeplensApp {
 
 enum SearchOutcome {
     Finished,
+    Limited,
     Cancelled,
     Error(String),
 }
@@ -1950,6 +1996,17 @@ async fn choose_folder() -> Option<PathBuf> {
 
 fn default_scope() -> PathBuf {
     PathBuf::from("/")
+}
+
+fn file_folder_scope_for(scope: &Path) -> PathBuf {
+    if scope == Path::new("/") {
+        return std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .filter(|home| home.is_dir())
+            .unwrap_or_else(|| scope.to_path_buf());
+    }
+
+    scope.to_path_buf()
 }
 
 fn platform_app_is_active() -> bool {
