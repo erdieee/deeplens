@@ -1,4 +1,5 @@
 use crate::shortcuts::{validate_global_shortcut, validate_shortcut, validate_shortcut_list};
+use crate::web_search::validate_web_shortcuts;
 
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -25,6 +26,7 @@ pub struct AppSettings {
     pub result_row_height: f32,
     pub terminal_app: String,
     pub excluded_folders: String,
+    pub web_search_shortcuts: String,
     pub global_shortcut: String,
     pub submit_shortcut: String,
     pub previous_result_shortcut: String,
@@ -71,6 +73,9 @@ impl Default for AppSettings {
             excluded_folders: String::from(
                 "Library, Library/Caches, Library/Developer, .Trash, node_modules, target, .git",
             ),
+            web_search_shortcuts: String::from(
+                "g=https://www.google.com/search?q={query}, google=https://www.google.com/search?q={query}, gh=https://github.com/search?q={query}, github=https://github.com/search?q={query}, yt=https://www.youtube.com/results?search_query={query}, youtube=https://www.youtube.com/results?search_query={query}, docs=https://www.google.com/search?q={query}+documentation",
+            ),
             global_shortcut: String::from("cmd+shift+space"),
             submit_shortcut: String::from("enter"),
             previous_result_shortcut: String::from("up"),
@@ -116,6 +121,7 @@ pub struct SettingsForm {
     pub result_row_height: String,
     pub terminal_app: String,
     pub excluded_folders: String,
+    pub web_search_shortcuts: String,
     pub global_shortcut: String,
     pub submit_shortcut: String,
     pub previous_result_shortcut: String,
@@ -160,6 +166,7 @@ impl From<&AppSettings> for SettingsForm {
             result_row_height: format_float(settings.result_row_height),
             terminal_app: settings.terminal_app.clone(),
             excluded_folders: settings.excluded_folders.clone(),
+            web_search_shortcuts: settings.web_search_shortcuts.clone(),
             global_shortcut: settings.global_shortcut.clone(),
             submit_shortcut: settings.submit_shortcut.clone(),
             previous_result_shortcut: settings.previous_result_shortcut.clone(),
@@ -218,6 +225,7 @@ impl SettingsForm {
             result_row_height: parse_f32(&self.result_row_height, "Result row height")?,
             terminal_app: parse_non_empty_text(&self.terminal_app, "Terminal app")?,
             excluded_folders: parse_comma_list(&self.excluded_folders, "Excluded folders")?,
+            web_search_shortcuts: validate_web_shortcuts(&self.web_search_shortcuts)?,
             global_shortcut: validate_global_shortcut(&self.global_shortcut, "Global shortcut")?,
             submit_shortcut: validate_shortcut(&self.submit_shortcut, "Submit shortcut")?,
             previous_result_shortcut: validate_shortcut(

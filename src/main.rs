@@ -8,6 +8,7 @@ mod settings;
 mod shortcuts;
 mod tools;
 mod types;
+mod web_search;
 
 fn main() -> iced::Result {
     tools::install_runtime_path();

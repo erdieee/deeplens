@@ -17,6 +17,7 @@ use crate::search::{self, SearchHandle, SearchOptions};
 use crate::settings::{self, AppSettings, SettingsForm};
 use crate::shortcuts::{self, GlobalShortcut};
 use crate::types::{GroupedSearchResult, SearchEvent, SearchMode, SearchResultKind};
+use crate::web_search::{parse_web_search_command, web_search_status};
 
 use iced::widget::operation::AbsoluteOffset;
 use iced::widget::scrollable as scrollable_style;
@@ -905,6 +906,12 @@ impl DeeplensApp {
                 "Comma-separated folders skipped by file and folder search.",
                 SettingsField::ExcludedFolders,
             ),
+            settings_field(
+                "Web search shortcuts",
+                &self.settings_form.web_search_shortcuts,
+                "Comma-separated name=url entries. Use {query} where the typed search goes.",
+                SettingsField::WebSearchShortcuts,
+            ),
         ]
         .spacing(8)
         .into()
@@ -1105,6 +1112,10 @@ impl DeeplensApp {
             return task;
         }
 
+        if let Some(task) = self.commit_web_search_command() {
+            return task;
+        }
+
         if self.commit_mode_query() {
             return Task::none();
         }
@@ -1136,6 +1147,36 @@ impl DeeplensApp {
         }
 
         false
+    }
+
+    fn commit_web_search_command(&mut self) -> Option<Task<Message>> {
+        let command = parse_web_search_command(&self.query, &self.settings);
+        let Some(status) = web_search_status(command.clone()) else {
+            return None;
+        };
+
+        match command {
+            Ok(Some(command)) if !command.query.is_empty() => {
+                self.pending_search = false;
+                self.stop_search();
+                self.clear_results();
+
+                if let Err(error) = open::that(&command.url) {
+                    self.status = format!("Failed to open web search: {error}");
+                    return Some(Task::none());
+                }
+
+                self.status = format!("Opened {} search", command.typed_shortcut);
+                Some(self.hide_window())
+            }
+            _ => {
+                self.pending_search = false;
+                self.stop_search();
+                self.clear_results();
+                self.status = status;
+                Some(Task::none())
+            }
+        }
     }
 
     fn commit_scope_query(&mut self) -> bool {
@@ -1267,6 +1308,16 @@ impl DeeplensApp {
             self.stop_search();
             self.clear_results();
             self.status = set_command_status(command);
+            return;
+        }
+
+        if let Some(status) =
+            web_search_status(parse_web_search_command(&self.query, &self.settings))
+        {
+            self.pending_search = false;
+            self.stop_search();
+            self.clear_results();
+            self.status = status;
             return;
         }
 
@@ -1763,7 +1814,10 @@ impl DeeplensApp {
     fn target_window_height(&self) -> f32 {
         if self.visible_result_count() > 0 {
             self.settings.expanded_height
-        } else if self.is_fresh_idle_screen() || self.is_set_command_screen() {
+        } else if self.is_fresh_idle_screen()
+            || self.is_set_command_screen()
+            || self.is_web_search_command_screen()
+        {
             self.settings.idle_height
         } else {
             self.settings.compact_height
@@ -1775,7 +1829,8 @@ impl DeeplensApp {
             || self.status == min_query_status(self.settings.min_query_chars)
             || self.status.starts_with("Scope set to ")
             || self.status.starts_with("Mode set to ")
-            || self.status.starts_with("Press Enter to use ");
+            || self.status.starts_with("Press Enter to use ")
+            || self.status.starts_with("Press Enter to search ");
 
         self.results.is_empty() && !self.running && !self.pending_search && showing_guidance_status
     }
@@ -1785,6 +1840,13 @@ impl DeeplensApp {
             && !self.running
             && !self.pending_search
             && parse_set_command(&self.query).is_some()
+    }
+
+    fn is_web_search_command_screen(&self) -> bool {
+        self.results.is_empty()
+            && !self.running
+            && !self.pending_search
+            && web_search_status(parse_web_search_command(&self.query, &self.settings)).is_some()
     }
 
     fn parsed_query(&self) -> ParsedQuery {
@@ -2589,6 +2651,9 @@ fn status_color(status: &str, min_query_chars: usize) -> Color {
         || status.starts_with("Scope set to ")
         || status.starts_with("Settings saved to ")
         || status.starts_with("Press Enter to use ")
+        || status.starts_with("Press Enter to search ")
+        || status.starts_with("Type a query after ")
+        || status.starts_with("Opened ")
         || is_set_command_status(status)
     {
         MUTED

@@ -173,10 +173,18 @@ code <file>            switch to Files and search code-like files
 /apps <file>           search installed macOS applications
 /folders <folder>      search folder names only
 /files <file>          search file contents only
+g <query>              search Google
+gh <query>             search GitHub
+yt <query>             search YouTube
+docs <query>           search documentation on the web
 /                      search from filesystem root
 /<folder> <file>       resolve folder with zoxide and search there
 /set <name> <value>    update a setting
 ```
+
+Web shortcuts are configurable with `web_search_shortcuts`. Entries use
+`name=https://example.com/search?q={query}` and are separated by commas. Slash
+forms such as `/g <query>` also work, but bare prefixes are the default style.
 
 ## Shortcuts
 
@@ -214,7 +222,7 @@ Settings are grouped into:
 
 - `General`: result limits, debounce, minimum query length, window sizes,
   result row height, terminal app, excluded folders, broad-search limits,
-  and recents/history ranking
+  web search shortcuts, and recents/history ranking
 - `Style`: colors for the palette, text, chips, selected rows, and highlights
 - `Shortcuts`: global and in-app shortcuts
 
@@ -241,6 +249,7 @@ You can also update individual settings from the search box:
 /set history_enabled true
 /set max_history_items 500
 /set history_recency_boost 300
+/set web_search_shortcuts g=https://www.google.com/search?q={query}, gh=https://github.com/search?q={query}
 /set global_shortcut cmd+shift+space
 ```
 
@@ -380,7 +389,7 @@ in daily use.
 - [ ] **Clipboard history**: search and paste recently copied text.
 - [ ] **Calculator and unit conversion**: evaluate quick math and conversions
   directly from the search box.
-- [ ] **Web search shortcuts**: open configured searches such as Google, GitHub,
+- [x] **Web search shortcuts**: open configured searches such as Google, GitHub,
   YouTube, or documentation with a short prefix.
 - [ ] **Custom commands**: run user-defined commands or scripts with arguments.
 

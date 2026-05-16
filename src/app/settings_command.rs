@@ -20,6 +20,7 @@ pub enum SettingsField {
     ResultRowHeight,
     TerminalApp,
     ExcludedFolders,
+    WebSearchShortcuts,
     GlobalShortcut,
     SubmitShortcut,
     PreviousResultShortcut,
@@ -64,6 +65,7 @@ impl SettingsField {
             SettingsField::ResultRowHeight => "result_row_height",
             SettingsField::TerminalApp => "terminal_app",
             SettingsField::ExcludedFolders => "excluded_folders",
+            SettingsField::WebSearchShortcuts => "web_search_shortcuts",
             SettingsField::GlobalShortcut => "global_shortcut",
             SettingsField::SubmitShortcut => "submit_shortcut",
             SettingsField::PreviousResultShortcut => "previous_result_shortcut",
@@ -119,6 +121,9 @@ impl SettingsField {
             "terminalapp" | "terminal" => Some(Self::TerminalApp),
             "excludedfolders" | "excludefolders" | "skippedfolders" | "skipfolders" => {
                 Some(Self::ExcludedFolders)
+            }
+            "websearchshortcuts" | "webshortcuts" | "searchshortcuts" => {
+                Some(Self::WebSearchShortcuts)
             }
             "globalshortcut" | "globalhotkey" | "showhide" => Some(Self::GlobalShortcut),
             "submitshortcut" | "openshortcut" | "submit" => Some(Self::SubmitShortcut),
@@ -246,6 +251,7 @@ pub(super) fn update_settings_form_value(
         SettingsField::ResultRowHeight => form.result_row_height = value,
         SettingsField::TerminalApp => form.terminal_app = value,
         SettingsField::ExcludedFolders => form.excluded_folders = value,
+        SettingsField::WebSearchShortcuts => form.web_search_shortcuts = value,
         SettingsField::GlobalShortcut => form.global_shortcut = value,
         SettingsField::SubmitShortcut => form.submit_shortcut = value,
         SettingsField::PreviousResultShortcut => form.previous_result_shortcut = value,
@@ -296,6 +302,7 @@ const SETTINGS_COMMAND_NAMES: &[&str] = &[
     "result_row_height",
     "terminal_app",
     "excluded_folders",
+    "web_search_shortcuts",
     "global_shortcut",
     "submit_shortcut",
     "previous_result_shortcut",
@@ -397,6 +404,14 @@ mod tests {
             Some(SetCommand::Ready {
                 field: SettingsField::HistoryRecencyBoost,
                 value: String::from("250"),
+            })
+        );
+
+        assert_eq!(
+            parse_set_command("/set web-shortcuts g=https://example.com?q={query}"),
+            Some(SetCommand::Ready {
+                field: SettingsField::WebSearchShortcuts,
+                value: String::from("g=https://example.com?q={query}"),
             })
         );
     }
