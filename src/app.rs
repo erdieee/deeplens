@@ -10,6 +10,7 @@ use crate::app::settings_command::{
 use crate::app::system_actions::{
     open_terminal_at, reveal_in_file_manager, terminal_directory_for,
 };
+use crate::history::SearchHistory;
 use crate::query::{self, ParsedQuery};
 use crate::ranking;
 use crate::search::{self, SearchHandle, SearchOptions};
@@ -255,6 +256,7 @@ pub struct DeeplensApp {
     settings: AppSettings,
     settings_form: SettingsForm,
     settings_tab: SettingsTab,
+    history: SearchHistory,
 }
 
 impl DeeplensApp {
@@ -262,6 +264,7 @@ impl DeeplensApp {
         let settings = settings::load();
         let settings_form = SettingsForm::from(&settings);
         let idle_height = settings.idle_height;
+        let history = SearchHistory::load();
         let (main_window_id, open_main_window) = window::open(main_window_settings(&settings));
 
         (
@@ -297,6 +300,7 @@ impl DeeplensApp {
                 settings,
                 settings_form,
                 settings_tab: SettingsTab::General,
+                history,
             },
             open_main_window.map(Message::MainWindowOpened),
         )
@@ -812,6 +816,36 @@ impl DeeplensApp {
                 SettingsField::SearchEventLimitMultiplier,
             ),
             settings_field(
+                "History enabled",
+                &self.settings_form.history_enabled,
+                "Records opened results and boosts them in future searches.",
+                SettingsField::HistoryEnabled,
+            ),
+            settings_field(
+                "Max history items",
+                &self.settings_form.max_history_items,
+                "Maximum number of opened results stored in history.",
+                SettingsField::MaxHistoryItems,
+            ),
+            settings_field(
+                "History frequency boost",
+                &self.settings_form.history_frequency_boost,
+                "Ranking boost added for each previous open.",
+                SettingsField::HistoryFrequencyBoost,
+            ),
+            settings_field(
+                "History recency boost",
+                &self.settings_form.history_recency_boost,
+                "Maximum ranking boost for recently opened results.",
+                SettingsField::HistoryRecencyBoost,
+            ),
+            settings_field(
+                "History recency days",
+                &self.settings_form.history_recency_days,
+                "Number of days before the recency boost decays to zero.",
+                SettingsField::HistoryRecencyDays,
+            ),
+            settings_field(
                 "Debounce ms",
                 &self.settings_form.search_debounce_ms,
                 "Wait time after typing before a search starts.",
@@ -1129,10 +1163,10 @@ impl DeeplensApp {
     }
 
     fn should_open_selected(&self) -> bool {
-        !self.running
-            && (self.selected_result.is_some() || self.selected_result_path.is_some())
+        !self.pending_search
             && !self.results.is_empty()
-            && self.query.trim() == self.last_search_query
+            && (self.selected_result.is_some() || self.selected_result_path.is_some())
+            && self.current_query_matches_active_search()
     }
 
     fn start_search(&mut self) {
@@ -1324,11 +1358,13 @@ impl DeeplensApp {
                     self.result_count += 1;
 
                     if self.results.len() < self.settings.max_displayed_results {
+                        let history_boost = self.history.score_for(&result.path, &self.settings);
                         ranking::insert_result(
                             &mut self.results,
                             result,
                             &self.active_search_text,
                             self.active_exact_phrase.as_deref(),
+                            history_boost,
                         );
 
                         if !self.user_selected_result {
@@ -1469,6 +1505,9 @@ impl DeeplensApp {
         self.reconcile_selected_result();
 
         if let Some(index) = self.selected_result {
+            if self.running {
+                self.stop_search();
+            }
             return self.open_result(index, true);
         }
 
@@ -1496,20 +1535,31 @@ impl DeeplensApp {
         let Some(result) = self.results.get(index) else {
             return Task::none();
         };
+        let path = result.path.clone();
+        let kind = result.kind;
 
-        if let Err(error) = open::that(&result.path) {
+        if let Err(error) = open::that(&path) {
             self.status = format!("Failed to open file: {error}");
             Task::none()
         } else if self.result_count > 0 {
+            let history_error = self.history.record_open(&path, kind, &self.settings).err();
             self.status = found_status(self.result_count, self.visible_result_count());
+            if let Some(error) = history_error.filter(|_| !hide_after_open) {
+                self.status = format_error_status(error);
+            }
             if hide_after_open {
                 self.hide_window()
             } else {
                 Task::none()
             }
         } else if hide_after_open {
+            let _ = self.history.record_open(&path, kind, &self.settings);
             self.hide_window()
         } else {
+            if let Err(error) = self.history.record_open(&path, kind, &self.settings) {
+                self.status = format_error_status(error);
+            }
+
             Task::none()
         }
     }
@@ -1596,15 +1646,28 @@ impl DeeplensApp {
             .to_owned()
     }
 
+    fn current_query_matches_active_search(&self) -> bool {
+        let parsed = self.parsed_query();
+
+        self.query.trim() == self.last_search_query
+            || (!self.active_search_text.is_empty()
+                && parsed.search_text.trim() == self.active_search_text)
+    }
+
     fn save_settings(&mut self) -> Task<Message> {
         match self.settings_form.parse() {
             Ok(settings) => {
                 self.settings = settings;
+                self.history.trim(self.settings.max_history_items);
+                let history_error = self.history.save().err();
                 let shortcut_error = self.reload_global_shortcut().err();
                 self.status = match settings::save(&self.settings) {
                     Ok(path) => format!("Settings saved to {}", path.display()),
                     Err(error) => format_error_status(error),
                 };
+                if let Some(error) = history_error {
+                    self.status = format_error_status(error);
+                }
                 if let Some(error) = shortcut_error {
                     self.status = format_error_status(error);
                 }
@@ -1640,6 +1703,8 @@ impl DeeplensApp {
             Ok(settings) => {
                 self.settings = settings;
                 self.settings_form = SettingsForm::from(&self.settings);
+                self.history.trim(self.settings.max_history_items);
+                let history_error = self.history.save().err();
                 let shortcut_error = self.reload_global_shortcut().err();
                 self.query.clear();
                 self.pending_search = false;
@@ -1651,6 +1716,9 @@ impl DeeplensApp {
                     Err(error) => format_error_status(error),
                 };
                 if let Some(error) = shortcut_error {
+                    self.status = format_error_status(error);
+                }
+                if let Some(error) = history_error {
                     self.status = format_error_status(error);
                 }
 

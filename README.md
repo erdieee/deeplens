@@ -213,7 +213,8 @@ Open settings with `Cmd+,`.
 Settings are grouped into:
 
 - `General`: result limits, debounce, minimum query length, window sizes,
-  result row height, terminal app, excluded folders, broad-search limits
+  result row height, terminal app, excluded folders, broad-search limits,
+  and recents/history ranking
 - `Style`: colors for the palette, text, chips, selected rows, and highlights
 - `Shortcuts`: global and in-app shortcuts
 
@@ -221,6 +222,12 @@ Settings are persisted at:
 
 ```text
 ~/.deeplens/settings.json
+```
+
+Recent-result history is stored separately at:
+
+```text
+~/.deeplens/history.json
 ```
 
 You can also update individual settings from the search box:
@@ -231,6 +238,9 @@ You can also update individual settings from the search box:
 /set excluded_folders Library, .Trash, node_modules, target, .git
 /set max_search_events_per_tick 160
 /set search_event_limit_multiplier 20
+/set history_enabled true
+/set max_history_items 500
+/set history_recency_boost 300
 /set global_shortcut cmd+shift+space
 ```
 
@@ -241,6 +251,9 @@ You can also update individual settings from the search box:
 - `Enter` opens the selected result.
 - The first visible result is highlighted automatically for each search.
 - Multiple matches in the same file are grouped.
+- Opened files, folders, and apps are remembered in `~/.deeplens/history.json`
+  and boosted in future searches. History is not shown as a separate results
+  screen yet.
 - The visible result list is capped by `max_displayed_results`.
 - Broad searches are bounded by `max_search_events_per_tick` and
   `search_event_limit_multiplier`.
@@ -354,8 +367,10 @@ in daily use.
   common apps open reliably from a few letters.
 - [x] **Fuzzy matching**: tolerate small typos, missing separators, and partial
   word matches without making results noisy.
-- [ ] **Recent and pinned results**: remember frequently opened files, folders,
-  and apps so repeated work is faster than a fresh search.
+- [x] **Recent results**: remember frequently opened files, folders, and apps so
+  repeated work is faster than a fresh search.
+- [ ] **Pinned results**: let users keep important files, folders, and apps at
+  the top for matching searches.
 - [ ] **Quick preview**: preview the selected file with a shortcut before opening
   it, similar to Quick Look.
 - [ ] **Actions menu**: add a small action picker for selected results, such as

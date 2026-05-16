@@ -10,13 +10,14 @@ pub fn insert_result(
     result: SearchResult,
     query: &str,
     exact_phrase: Option<&str>,
+    history_boost: i64,
 ) {
     let mut should_sort = false;
 
     if let Some(existing) = groups.iter_mut().find(|group| group.path == result.path) {
         existing.match_count += 1;
 
-        let candidate_score = score_result(&result, query, exact_phrase);
+        let candidate_score = score_result(&result, query, exact_phrase, history_boost);
         if candidate_score > existing.score {
             existing.line_number = result.line_number;
             existing.snippet = result.snippet;
@@ -26,7 +27,7 @@ pub fn insert_result(
         }
     } else {
         groups.push(GroupedSearchResult {
-            score: score_result(&result, query, exact_phrase),
+            score: score_result(&result, query, exact_phrase, history_boost),
             path: result.path,
             line_number: result.line_number,
             snippet: result.snippet,
@@ -42,7 +43,12 @@ pub fn insert_result(
     }
 }
 
-fn score_result(result: &SearchResult, query: &str, exact_phrase: Option<&str>) -> i64 {
+fn score_result(
+    result: &SearchResult,
+    query: &str,
+    exact_phrase: Option<&str>,
+    history_boost: i64,
+) -> i64 {
     let filename = result
         .path
         .file_name()
@@ -54,6 +60,7 @@ fn score_result(result: &SearchResult, query: &str, exact_phrase: Option<&str>) 
     let query = query.to_ascii_lowercase();
 
     let mut score = 0;
+    score += history_boost;
 
     if result.kind == SearchResultKind::Application {
         score += 900;

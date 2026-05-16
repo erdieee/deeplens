@@ -5,6 +5,11 @@ pub enum SettingsField {
     MaxDisplayedResults,
     MaxSearchEventsPerTick,
     SearchEventLimitMultiplier,
+    HistoryEnabled,
+    MaxHistoryItems,
+    HistoryFrequencyBoost,
+    HistoryRecencyBoost,
+    HistoryRecencyDays,
     SearchDebounceMs,
     DoubleClickMs,
     MinQueryChars,
@@ -44,6 +49,11 @@ impl SettingsField {
             SettingsField::MaxDisplayedResults => "max_displayed_results",
             SettingsField::MaxSearchEventsPerTick => "max_search_events_per_tick",
             SettingsField::SearchEventLimitMultiplier => "search_event_limit_multiplier",
+            SettingsField::HistoryEnabled => "history_enabled",
+            SettingsField::MaxHistoryItems => "max_history_items",
+            SettingsField::HistoryFrequencyBoost => "history_frequency_boost",
+            SettingsField::HistoryRecencyBoost => "history_recency_boost",
+            SettingsField::HistoryRecencyDays => "history_recency_days",
             SettingsField::SearchDebounceMs => "search_debounce_ms",
             SettingsField::DoubleClickMs => "double_click_ms",
             SettingsField::MinQueryChars => "min_query_chars",
@@ -87,6 +97,17 @@ impl SettingsField {
             "searcheventlimitmultiplier" | "eventlimitmultiplier" | "matchlimitmultiplier" => {
                 Some(Self::SearchEventLimitMultiplier)
             }
+            "historyenabled" | "history" | "recentsenabled" | "recents" => {
+                Some(Self::HistoryEnabled)
+            }
+            "maxhistoryitems" | "historyitems" | "maxrecents" => Some(Self::MaxHistoryItems),
+            "historyfrequencyboost" | "frequencyboost" | "frequentboost" => {
+                Some(Self::HistoryFrequencyBoost)
+            }
+            "historyrecencyboost" | "recencyboost" | "recentboost" => {
+                Some(Self::HistoryRecencyBoost)
+            }
+            "historyrecencydays" | "recencydays" | "recentdays" => Some(Self::HistoryRecencyDays),
             "searchdebouncems" | "debouncems" | "debounce" => Some(Self::SearchDebounceMs),
             "doubleclickms" | "doubleclick" => Some(Self::DoubleClickMs),
             "minquerychars" | "minchars" => Some(Self::MinQueryChars),
@@ -210,6 +231,11 @@ pub(super) fn update_settings_form_value(
         SettingsField::MaxDisplayedResults => form.max_displayed_results = value,
         SettingsField::MaxSearchEventsPerTick => form.max_search_events_per_tick = value,
         SettingsField::SearchEventLimitMultiplier => form.search_event_limit_multiplier = value,
+        SettingsField::HistoryEnabled => form.history_enabled = value,
+        SettingsField::MaxHistoryItems => form.max_history_items = value,
+        SettingsField::HistoryFrequencyBoost => form.history_frequency_boost = value,
+        SettingsField::HistoryRecencyBoost => form.history_recency_boost = value,
+        SettingsField::HistoryRecencyDays => form.history_recency_days = value,
         SettingsField::SearchDebounceMs => form.search_debounce_ms = value,
         SettingsField::DoubleClickMs => form.double_click_ms = value,
         SettingsField::MinQueryChars => form.min_query_chars = value,
@@ -255,6 +281,11 @@ const SETTINGS_COMMAND_NAMES: &[&str] = &[
     "max_displayed_results",
     "max_search_events_per_tick",
     "search_event_limit_multiplier",
+    "history_enabled",
+    "max_history_items",
+    "history_frequency_boost",
+    "history_recency_boost",
+    "history_recency_days",
     "search_debounce_ms",
     "double_click_ms",
     "min_query_chars",
@@ -350,6 +381,22 @@ mod tests {
             Some(SetCommand::Ready {
                 field: SettingsField::SearchEventLimitMultiplier,
                 value: String::from("10"),
+            })
+        );
+
+        assert_eq!(
+            parse_set_command("/set recents off"),
+            Some(SetCommand::Ready {
+                field: SettingsField::HistoryEnabled,
+                value: String::from("off"),
+            })
+        );
+
+        assert_eq!(
+            parse_set_command("/set recent-boost 250"),
+            Some(SetCommand::Ready {
+                field: SettingsField::HistoryRecencyBoost,
+                value: String::from("250"),
             })
         );
     }

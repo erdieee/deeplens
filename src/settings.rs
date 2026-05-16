@@ -10,6 +10,11 @@ pub struct AppSettings {
     pub max_displayed_results: usize,
     pub max_search_events_per_tick: usize,
     pub search_event_limit_multiplier: usize,
+    pub history_enabled: bool,
+    pub max_history_items: usize,
+    pub history_frequency_boost: usize,
+    pub history_recency_boost: usize,
+    pub history_recency_days: u64,
     pub search_debounce_ms: u64,
     pub double_click_ms: u64,
     pub min_query_chars: usize,
@@ -49,6 +54,11 @@ impl Default for AppSettings {
             max_displayed_results: 300,
             max_search_events_per_tick: 160,
             search_event_limit_multiplier: 20,
+            history_enabled: true,
+            max_history_items: 500,
+            history_frequency_boost: 35,
+            history_recency_boost: 300,
+            history_recency_days: 30,
             search_debounce_ms: 650,
             double_click_ms: 420,
             min_query_chars: 3,
@@ -91,6 +101,11 @@ pub struct SettingsForm {
     pub max_displayed_results: String,
     pub max_search_events_per_tick: String,
     pub search_event_limit_multiplier: String,
+    pub history_enabled: String,
+    pub max_history_items: String,
+    pub history_frequency_boost: String,
+    pub history_recency_boost: String,
+    pub history_recency_days: String,
     pub search_debounce_ms: String,
     pub double_click_ms: String,
     pub min_query_chars: String,
@@ -130,6 +145,11 @@ impl From<&AppSettings> for SettingsForm {
             max_displayed_results: settings.max_displayed_results.to_string(),
             max_search_events_per_tick: settings.max_search_events_per_tick.to_string(),
             search_event_limit_multiplier: settings.search_event_limit_multiplier.to_string(),
+            history_enabled: settings.history_enabled.to_string(),
+            max_history_items: settings.max_history_items.to_string(),
+            history_frequency_boost: settings.history_frequency_boost.to_string(),
+            history_recency_boost: settings.history_recency_boost.to_string(),
+            history_recency_days: settings.history_recency_days.to_string(),
             search_debounce_ms: settings.search_debounce_ms.to_string(),
             double_click_ms: settings.double_click_ms.to_string(),
             min_query_chars: settings.min_query_chars.to_string(),
@@ -177,6 +197,17 @@ impl SettingsForm {
                 &self.search_event_limit_multiplier,
                 "Search event limit multiplier",
             )?,
+            history_enabled: parse_bool(&self.history_enabled, "History enabled")?,
+            max_history_items: parse_usize(&self.max_history_items, "Max history items")?,
+            history_frequency_boost: parse_usize(
+                &self.history_frequency_boost,
+                "History frequency boost",
+            )?,
+            history_recency_boost: parse_usize(
+                &self.history_recency_boost,
+                "History recency boost",
+            )?,
+            history_recency_days: parse_u64(&self.history_recency_days, "History recency days")?,
             search_debounce_ms: parse_u64(&self.search_debounce_ms, "Debounce")?,
             double_click_ms: parse_u64(&self.double_click_ms, "Double-click window")?,
             min_query_chars: parse_usize(&self.min_query_chars, "Minimum query characters")?,
@@ -233,6 +264,10 @@ impl SettingsForm {
             return Err(String::from(
                 "Search event limit multiplier must be at least 1.",
             ));
+        }
+
+        if settings.max_history_items == 0 {
+            return Err(String::from("Max history items must be at least 1."));
         }
 
         if settings.min_query_chars == 0 {
@@ -308,6 +343,14 @@ fn parse_u64(value: &str, label: &str) -> Result<u64, String> {
         .trim()
         .parse()
         .map_err(|_| format!("{label} must be a whole number."))
+}
+
+fn parse_bool(value: &str, label: &str) -> Result<bool, String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "true" | "yes" | "on" | "1" => Ok(true),
+        "false" | "no" | "off" | "0" => Ok(false),
+        _ => Err(format!("{label} must be true or false.")),
+    }
 }
 
 fn parse_f32(value: &str, label: &str) -> Result<f32, String> {

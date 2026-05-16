@@ -1,5 +1,6 @@
 mod app;
 mod app_search;
+mod history;
 mod query;
 mod ranking;
 mod search;
