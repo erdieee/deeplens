@@ -185,6 +185,7 @@ fn collect_application_matches(
             if app_match_score(&path, query) > 0
                 && sender
                     .send(SearchEvent::Result(SearchResult {
+                        title: None,
                         icon_path: application_icon_png(&path),
                         snippet: format!("Application: {}", app_display_name(&path)),
                         path,
@@ -521,6 +522,7 @@ fn read_fd_stdout(stdout: impl std::io::Read, sender: &Sender<SearchEvent>) -> R
 
         if sender
             .send(SearchEvent::Result(SearchResult {
+                title: None,
                 path: PathBuf::from(path),
                 line_number: None,
                 snippet: String::from("Folder name match"),
@@ -554,6 +556,7 @@ fn parse_match_line(line: &str) -> Option<SearchResult> {
         .to_owned();
 
     Some(SearchResult {
+        title: None,
         path: PathBuf::from(path),
         line_number,
         snippet,

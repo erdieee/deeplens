@@ -10,6 +10,9 @@ pub enum SettingsField {
     HistoryFrequencyBoost,
     HistoryRecencyBoost,
     HistoryRecencyDays,
+    CalculatorEnabled,
+    CalculatorRequiresPrefix,
+    CalculatorCommand,
     SearchDebounceMs,
     DoubleClickMs,
     MinQueryChars,
@@ -55,6 +58,9 @@ impl SettingsField {
             SettingsField::HistoryFrequencyBoost => "history_frequency_boost",
             SettingsField::HistoryRecencyBoost => "history_recency_boost",
             SettingsField::HistoryRecencyDays => "history_recency_days",
+            SettingsField::CalculatorEnabled => "calculator_enabled",
+            SettingsField::CalculatorRequiresPrefix => "calculator_requires_prefix",
+            SettingsField::CalculatorCommand => "calculator_command",
             SettingsField::SearchDebounceMs => "search_debounce_ms",
             SettingsField::DoubleClickMs => "double_click_ms",
             SettingsField::MinQueryChars => "min_query_chars",
@@ -110,6 +116,11 @@ impl SettingsField {
                 Some(Self::HistoryRecencyBoost)
             }
             "historyrecencydays" | "recencydays" | "recentdays" => Some(Self::HistoryRecencyDays),
+            "calculatorenabled" | "calculator" | "calc" => Some(Self::CalculatorEnabled),
+            "calculatorrequiresprefix" | "calcrequiresprefix" | "calcprefix" => {
+                Some(Self::CalculatorRequiresPrefix)
+            }
+            "calculatorcommand" | "calccommand" | "numbatcommand" => Some(Self::CalculatorCommand),
             "searchdebouncems" | "debouncems" | "debounce" => Some(Self::SearchDebounceMs),
             "doubleclickms" | "doubleclick" => Some(Self::DoubleClickMs),
             "minquerychars" | "minchars" => Some(Self::MinQueryChars),
@@ -241,6 +252,9 @@ pub(super) fn update_settings_form_value(
         SettingsField::HistoryFrequencyBoost => form.history_frequency_boost = value,
         SettingsField::HistoryRecencyBoost => form.history_recency_boost = value,
         SettingsField::HistoryRecencyDays => form.history_recency_days = value,
+        SettingsField::CalculatorEnabled => form.calculator_enabled = value,
+        SettingsField::CalculatorRequiresPrefix => form.calculator_requires_prefix = value,
+        SettingsField::CalculatorCommand => form.calculator_command = value,
         SettingsField::SearchDebounceMs => form.search_debounce_ms = value,
         SettingsField::DoubleClickMs => form.double_click_ms = value,
         SettingsField::MinQueryChars => form.min_query_chars = value,
@@ -292,6 +306,9 @@ const SETTINGS_COMMAND_NAMES: &[&str] = &[
     "history_frequency_boost",
     "history_recency_boost",
     "history_recency_days",
+    "calculator_enabled",
+    "calculator_requires_prefix",
+    "calculator_command",
     "search_debounce_ms",
     "double_click_ms",
     "min_query_chars",
@@ -412,6 +429,14 @@ mod tests {
             Some(SetCommand::Ready {
                 field: SettingsField::WebSearchShortcuts,
                 value: String::from("g=https://example.com?q={query}"),
+            })
+        );
+
+        assert_eq!(
+            parse_set_command("/set calc-prefix true"),
+            Some(SetCommand::Ready {
+                field: SettingsField::CalculatorRequiresPrefix,
+                value: String::from("true"),
             })
         );
     }

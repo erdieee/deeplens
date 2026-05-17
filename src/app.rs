@@ -10,6 +10,7 @@ use crate::app::settings_command::{
 use crate::app::system_actions::{
     open_terminal_at, reveal_in_file_manager, terminal_directory_for,
 };
+use crate::calculator;
 use crate::history::SearchHistory;
 use crate::query::{self, ParsedQuery};
 use crate::ranking;
@@ -122,6 +123,11 @@ pub enum Message {
     Submit,
     Cancel,
     Tick,
+    CalculationFinished {
+        query: String,
+        expression: String,
+        result: Result<String, String>,
+    },
     SetSearchMode(SearchMode),
     SelectPrevious,
     SelectNext,
@@ -253,6 +259,7 @@ pub struct DeeplensApp {
     results_view_height: f32,
     search: Option<SearchHandle>,
     running: bool,
+    calculating: bool,
     status: String,
     settings: AppSettings,
     settings_form: SettingsForm,
@@ -297,6 +304,7 @@ impl DeeplensApp {
                 results_view_height: 360.0,
                 search: None,
                 running: false,
+                calculating: false,
                 status: idle_status(settings.min_query_chars),
                 settings,
                 settings_form,
@@ -375,7 +383,16 @@ impl DeeplensApp {
                 }
 
                 self.drain_search_events();
-                self.run_pending_search();
+                task = Task::batch([task, self.run_pending_search()]);
+            }
+            Message::CalculationFinished {
+                query,
+                expression,
+                result,
+            } => {
+                if self.query.trim() == query && self.calculating {
+                    self.finish_calculation(expression, result);
+                }
             }
             Message::SetSearchMode(mode) => {
                 self.search_mode = mode;
@@ -564,7 +581,7 @@ impl DeeplensApp {
         let windows = window::close_events().map(Message::WindowClosed);
         let hotkey_tick = time::every(Duration::from_millis(120)).map(|_| Message::Tick);
 
-        if self.running || self.pending_search {
+        if self.running || self.pending_search || self.calculating {
             Subscription::batch([
                 time::every(Duration::from_millis(75)).map(|_| Message::Tick),
                 keyboard,
@@ -847,6 +864,24 @@ impl DeeplensApp {
                 SettingsField::HistoryRecencyDays,
             ),
             settings_field(
+                "Calculator enabled",
+                &self.settings_form.calculator_enabled,
+                "Uses Numbat to evaluate expression-like input.",
+                SettingsField::CalculatorEnabled,
+            ),
+            settings_field(
+                "Calculator requires prefix",
+                &self.settings_form.calculator_requires_prefix,
+                "Only calculate input starting with = or calc when true.",
+                SettingsField::CalculatorRequiresPrefix,
+            ),
+            settings_field(
+                "Calculator command",
+                &self.settings_form.calculator_command,
+                "Command used for calculations, usually numbat.",
+                SettingsField::CalculatorCommand,
+            ),
+            settings_field(
                 "Debounce ms",
                 &self.settings_form.search_debounce_ms,
                 "Wait time after typing before a search starts.",
@@ -1077,7 +1112,7 @@ impl DeeplensApp {
             &self.status,
             self.result_count,
             self.visible_result_count(),
-            self.running || self.pending_search,
+            self.running || self.pending_search || self.calculating,
             self.settings.min_query_chars,
         )
     }
@@ -1287,6 +1322,7 @@ impl DeeplensApp {
 
     fn cancel_search(&mut self) {
         self.stop_search();
+        self.calculating = false;
         self.pending_search = false;
         self.status = String::from("Search cancelled");
     }
@@ -1298,6 +1334,54 @@ impl DeeplensApp {
 
         self.search = None;
         self.running = false;
+    }
+
+    fn start_calculation(&mut self, expression: String) -> Task<Message> {
+        self.clear_results();
+        self.last_search_query = self.query.trim().to_owned();
+        self.active_search_text = expression.clone();
+        self.active_exact_phrase = None;
+        self.calculating = true;
+        self.running = false;
+        self.status = String::from("Calculating…");
+
+        let query = self.query.trim().to_owned();
+        let command = self.settings.calculator_command.clone();
+
+        Task::perform(
+            calculator::evaluate(expression.clone(), command),
+            move |result| Message::CalculationFinished {
+                query,
+                expression,
+                result,
+            },
+        )
+    }
+
+    fn finish_calculation(&mut self, expression: String, result: Result<String, String>) {
+        self.calculating = false;
+        self.clear_results();
+
+        match result {
+            Ok(value) => {
+                self.result_count = 1;
+                self.results.push(GroupedSearchResult {
+                    title: Some(expression),
+                    path: PathBuf::from("Numbat"),
+                    line_number: None,
+                    snippet: value,
+                    match_count: 1,
+                    score: 2_000,
+                    kind: SearchResultKind::Calculator,
+                    icon_path: None,
+                });
+                let _ = self.select_first_visible();
+                self.status = String::from("Calculation result");
+            }
+            Err(error) => {
+                self.status = format_error_status(error);
+            }
+        }
     }
 
     fn schedule_search(&mut self) {
@@ -1316,8 +1400,17 @@ impl DeeplensApp {
         {
             self.pending_search = false;
             self.stop_search();
+            self.calculating = false;
             self.clear_results();
             self.status = status;
+            return;
+        }
+
+        if calculator::parse_calculation(&self.query, &self.settings).is_some() {
+            self.pending_search = true;
+            self.stop_search();
+            self.clear_results();
+            self.status = String::from("Waiting…");
             return;
         }
 
@@ -1327,6 +1420,7 @@ impl DeeplensApp {
         if let Some(error) = parsed.scope_error {
             self.pending_search = false;
             self.stop_search();
+            self.calculating = false;
             self.clear_results();
             self.status = format_error_status(error);
             return;
@@ -1335,6 +1429,7 @@ impl DeeplensApp {
         if parsed.search_text.trim().is_empty() {
             self.pending_search = false;
             self.stop_search();
+            self.calculating = false;
             self.clear_results();
             self.status = if let Some(mode) = parsed.mode {
                 format!("Press Enter to use {}", mode.label())
@@ -1349,6 +1444,7 @@ impl DeeplensApp {
         if !query_is_ready(&parsed.search_text, self.settings.min_query_chars) {
             self.pending_search = false;
             self.stop_search();
+            self.calculating = false;
             self.clear_results();
             self.status = min_query_status(self.settings.min_query_chars);
             return;
@@ -1356,22 +1452,29 @@ impl DeeplensApp {
 
         self.pending_search = true;
         self.stop_search();
+        self.calculating = false;
         self.status = String::from("Waiting…");
     }
 
-    fn run_pending_search(&mut self) {
+    fn run_pending_search(&mut self) -> Task<Message> {
         if !self.pending_search {
-            return;
+            return Task::none();
         }
 
         let Some(last_change) = self.last_query_change else {
-            return;
+            return Task::none();
         };
 
         if last_change.elapsed() >= Duration::from_millis(self.settings.search_debounce_ms) {
             self.pending_search = false;
-            self.start_search();
+            if let Some(calculation) = calculator::parse_calculation(&self.query, &self.settings) {
+                return self.start_calculation(calculation.expression);
+            } else {
+                self.start_search();
+            }
         }
+
+        Task::none()
     }
 
     fn clear_results(&mut self) {
@@ -1586,6 +1689,17 @@ impl DeeplensApp {
         let Some(result) = self.results.get(index) else {
             return Task::none();
         };
+        if result.kind == SearchResultKind::Calculator {
+            let value = result.snippet.clone();
+            self.status = String::from("Result copied");
+            let copy = clipboard::write(value);
+            return if hide_after_open {
+                Task::batch([copy, self.hide_window()])
+            } else {
+                copy
+            };
+        }
+
         let path = result.path.clone();
         let kind = result.kind;
 
@@ -1677,6 +1791,7 @@ impl DeeplensApp {
 
                 path_completion_target(&relative_path, query)
             }
+            SearchResultKind::Calculator => None,
         }
     }
 
@@ -1832,13 +1947,18 @@ impl DeeplensApp {
             || self.status.starts_with("Press Enter to use ")
             || self.status.starts_with("Press Enter to search ");
 
-        self.results.is_empty() && !self.running && !self.pending_search && showing_guidance_status
+        self.results.is_empty()
+            && !self.running
+            && !self.pending_search
+            && !self.calculating
+            && showing_guidance_status
     }
 
     fn is_set_command_screen(&self) -> bool {
         self.results.is_empty()
             && !self.running
             && !self.pending_search
+            && !self.calculating
             && parse_set_command(&self.query).is_some()
     }
 
@@ -1846,6 +1966,7 @@ impl DeeplensApp {
         self.results.is_empty()
             && !self.running
             && !self.pending_search
+            && !self.calculating
             && web_search_status(parse_web_search_command(&self.query, &self.settings)).is_some()
     }
 
@@ -2092,6 +2213,9 @@ impl DeeplensApp {
         !(self.status == "Idle"
             || self.status == idle_status(self.settings.min_query_chars)
             || self.status == "Searching…"
+            || self.status == "Calculating…"
+            || self.status == "Calculation result"
+            || self.status == "Result copied"
             || self.status.starts_with("Searching ")
             || self.status == "Waiting…"
             || self.status == "Search cancelled"
@@ -2285,12 +2409,14 @@ fn view_result_row(
     query: &str,
     row_height: f32,
 ) -> Element<'static, Message> {
-    let filename = result
-        .path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("(unknown file)")
-        .to_owned();
+    let filename = result.title.clone().unwrap_or_else(|| {
+        result
+            .path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("(unknown file)")
+            .to_owned()
+    });
 
     let path = result_path_label(result);
     let snippet = result.snippet.trim();
@@ -2355,6 +2481,12 @@ fn file_icon(
         }
     }
 
+    if result_kind == SearchResultKind::Calculator {
+        return container(text("=").size(18).color(ACCENT))
+            .width(Length::Fixed(18.0))
+            .into();
+    }
+
     let kind = ResultKind::from_result(result_kind, path);
 
     container(text(kind.symbol()).size(16))
@@ -2363,6 +2495,10 @@ fn file_icon(
 }
 
 fn result_path_label(result: &GroupedSearchResult) -> String {
+    if result.kind == SearchResultKind::Calculator {
+        return String::from("Numbat");
+    }
+
     let path = compact_path(&result.path);
 
     match result.line_number {
@@ -2379,6 +2515,7 @@ enum ResultKind {
     Doc,
     Text,
     Code,
+    Calculator,
     File,
 }
 
@@ -2390,6 +2527,10 @@ impl ResultKind {
 
         if result_kind == SearchResultKind::Application {
             return Self::App;
+        }
+
+        if result_kind == SearchResultKind::Calculator {
+            return Self::Calculator;
         }
 
         match path
@@ -2412,6 +2553,7 @@ impl ResultKind {
         match self {
             Self::Folder => "📁",
             Self::App => "□",
+            Self::Calculator => "=",
             Self::Pdf | Self::Doc | Self::Text | Self::Code | Self::File => "📄",
         }
     }
@@ -2570,6 +2712,10 @@ fn view_status_label(
         String::from("Cancelled")
     } else if status == "Path copied" {
         String::from("Path copied")
+    } else if status == "Result copied" {
+        String::from("Result copied")
+    } else if status == "Calculation result" {
+        String::from("Calculation result")
     } else if status == "Opened terminal" {
         String::from("Opened terminal")
     } else if status == "Install command copied" {
@@ -2640,6 +2786,9 @@ fn status_color(status: &str, min_query_chars: usize) -> Color {
     if status == "Idle"
         || status == idle_status(min_query_chars)
         || status == "Searching…"
+        || status == "Calculating…"
+        || status == "Calculation result"
+        || status == "Result copied"
         || status == "Waiting…"
         || status == "Path copied"
         || status == "Opened terminal"

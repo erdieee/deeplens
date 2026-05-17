@@ -126,6 +126,7 @@ fn history_kind(kind: SearchResultKind) -> &'static str {
         SearchResultKind::FileContent => "file",
         SearchResultKind::FolderName => "folder",
         SearchResultKind::Application => "app",
+        SearchResultKind::Calculator => "calculator",
     }
 }
 

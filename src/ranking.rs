@@ -19,6 +19,7 @@ pub fn insert_result(
 
         let candidate_score = score_result(&result, query, exact_phrase, history_boost);
         if candidate_score > existing.score {
+            existing.title = result.title;
             existing.line_number = result.line_number;
             existing.snippet = result.snippet;
             existing.score = candidate_score;
@@ -28,6 +29,7 @@ pub fn insert_result(
     } else {
         groups.push(GroupedSearchResult {
             score: score_result(&result, query, exact_phrase, history_boost),
+            title: result.title,
             path: result.path,
             line_number: result.line_number,
             snippet: result.snippet,
@@ -65,6 +67,10 @@ fn score_result(
     if result.kind == SearchResultKind::Application {
         score += 900;
         score += app_match_score(&result.path, &query);
+    }
+
+    if result.kind == SearchResultKind::Calculator {
+        score += 2_000;
     }
 
     if !query.is_empty() {

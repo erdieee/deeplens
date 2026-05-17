@@ -73,11 +73,13 @@ terminal launch behavior, and shortcut labels.
 - `rga` from `ripgrep-all`
 - `fd`
 - `zoxide`
+- `numbat` for calculator and unit conversion results
 
 Install dependencies on macOS:
 
 ```sh
 brew install ripgrep-all fd zoxide
+cargo install numbat-cli
 ```
 
 For a source checkout, these tools must be available on `PATH`. A packaged
@@ -173,6 +175,9 @@ code <file>            switch to Files and search code-like files
 /apps <file>           search installed macOS applications
 /folders <folder>      search folder names only
 /files <file>          search file contents only
+2 + 2                  calculate with Numbat
+=30 km/h -> mph        calculate or convert units with Numbat
+calc 5 ft + 2 in -> cm calculate explicitly with Numbat
 g <query>              search Google
 gh <query>             search GitHub
 yt <query>             search YouTube
@@ -185,6 +190,10 @@ docs <query>           search documentation on the web
 Web shortcuts are configurable with `web_search_shortcuts`. Entries use
 `name=https://example.com/search?q={query}` and are separated by commas. Slash
 forms such as `/g <query>` also work, but bare prefixes are the default style.
+
+Calculator results use [`numbat`](https://github.com/sharkdp/numbat). Expression-like
+input is detected automatically; set `calculator_requires_prefix` to `true` if
+you only want calculations for input starting with `=` or `calc`.
 
 ## Shortcuts
 
@@ -250,6 +259,8 @@ You can also update individual settings from the search box:
 /set max_history_items 500
 /set history_recency_boost 300
 /set web_search_shortcuts g=https://www.google.com/search?q={query}, gh=https://github.com/search?q={query}
+/set calculator_enabled true
+/set calculator_requires_prefix false
 /set global_shortcut cmd+shift+space
 ```
 
@@ -387,7 +398,7 @@ in daily use.
 - [ ] **Cleaner mode controls**: replace extra chips with one simple search mode
   control and keep advanced filters in query syntax.
 - [ ] **Clipboard history**: search and paste recently copied text.
-- [ ] **Calculator and unit conversion**: evaluate quick math and conversions
+- [x] **Calculator and unit conversion**: evaluate quick math and conversions
   directly from the search box.
 - [x] **Web search shortcuts**: open configured searches such as Google, GitHub,
   YouTube, or documentation with a short prefix.

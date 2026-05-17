@@ -58,6 +58,13 @@ install_brew_package ripgrep-all rga
 install_brew_package fd fd
 install_brew_package zoxide zoxide
 
+if command_exists numbat; then
+    printf 'numbat already installed\n'
+else
+    printf 'Installing numbat with Cargo...\n'
+    cargo install numbat-cli
+fi
+
 printf 'Building DeepLens release binary...\n'
 cargo build --release --manifest-path "$ROOT_DIR/Cargo.toml"
 

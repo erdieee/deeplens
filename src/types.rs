@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub struct SearchResult {
+    pub title: Option<String>,
     pub path: PathBuf,
     pub line_number: Option<u64>,
     pub snippet: String,
@@ -11,6 +12,7 @@ pub struct SearchResult {
 
 #[derive(Debug, Clone)]
 pub struct GroupedSearchResult {
+    pub title: Option<String>,
     pub path: PathBuf,
     pub line_number: Option<u64>,
     pub snippet: String,
@@ -25,6 +27,7 @@ pub enum SearchResultKind {
     FileContent,
     FolderName,
     Application,
+    Calculator,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
