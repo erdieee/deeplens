@@ -204,6 +204,7 @@ Default shortcuts:
 | `Cmd+Shift+Space` | Show or hide DeepLens |
 | `Cmd+,` | Open settings |
 | `Enter` | Open selected result |
+| `Space` | Preview selected result with Quick Look |
 | `Cmd+Enter` | Reveal selected result in Finder |
 | `Cmd+C` | Copy selected path |
 | `Cmd+T` | Open selected result folder in terminal |
@@ -261,6 +262,8 @@ You can also update individual settings from the search box:
 /set web_search_shortcuts g=https://www.google.com/search?q={query}, gh=https://github.com/search?q={query}
 /set calculator_enabled true
 /set calculator_requires_prefix false
+/set preview_enabled true
+/set preview_shortcut space
 /set global_shortcut cmd+shift+space
 ```
 
@@ -391,7 +394,7 @@ in daily use.
   repeated work is faster than a fresh search.
 - [ ] **Pinned results**: let users keep important files, folders, and apps at
   the top for matching searches.
-- [ ] **Quick preview**: preview the selected file with a shortcut before opening
+- [x] **Quick preview**: preview the selected file with a shortcut before opening
   it, similar to Quick Look.
 - [ ] **Actions menu**: add a small action picker for selected results, such as
   open, reveal, copy path, copy filename, open terminal here, and show info.

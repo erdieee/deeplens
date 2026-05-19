@@ -371,6 +371,8 @@ pub fn keyboard_event(
 
     if shortcut_matches(&settings.reveal_shortcut, &key, physical_key, modifiers) {
         Some(crate::app::Message::RevealSelected)
+    } else if shortcut_matches(&settings.preview_shortcut, &key, physical_key, modifiers) {
+        Some(crate::app::Message::PreviewSelected)
     } else if shortcut_matches(&settings.submit_shortcut, &key, physical_key, modifiers) {
         Some(crate::app::Message::Submit)
     } else if shortcut_matches(

@@ -8,7 +8,7 @@ use crate::app::settings_command::{
     parse_set_command, set_command_status, update_settings_form_value, SetCommand,
 };
 use crate::app::system_actions::{
-    open_terminal_at, reveal_in_file_manager, terminal_directory_for,
+    open_terminal_at, preview_with_quick_look, reveal_in_file_manager, terminal_directory_for,
 };
 use crate::calculator;
 use crate::history::SearchHistory;
@@ -136,6 +136,7 @@ pub enum Message {
     ClearHoveredResult(usize),
     AcceptGhostCompletion,
     RevealSelected,
+    PreviewSelected,
     OpenSelectedInTerminal,
     CopySelectedPath,
     CopyInstallCommand,
@@ -433,6 +434,9 @@ impl DeeplensApp {
             }
             Message::RevealSelected => {
                 self.reveal_selected();
+            }
+            Message::PreviewSelected => {
+                self.preview_selected();
             }
             Message::OpenSelectedInTerminal => {
                 self.open_selected_in_terminal();
@@ -882,6 +886,12 @@ impl DeeplensApp {
                 SettingsField::CalculatorCommand,
             ),
             settings_field(
+                "Preview enabled",
+                &self.settings_form.preview_enabled,
+                "Uses macOS Quick Look to preview the selected result.",
+                SettingsField::PreviewEnabled,
+            ),
+            settings_field(
                 "Debounce ms",
                 &self.settings_form.search_debounce_ms,
                 "Wait time after typing before a search starts.",
@@ -1086,6 +1096,12 @@ impl DeeplensApp {
                 &self.settings_form.terminal_shortcut,
                 "Opens the selected result folder in the configured terminal.",
                 SettingsField::TerminalShortcut,
+            ),
+            settings_field(
+                "Preview shortcut",
+                &self.settings_form.preview_shortcut,
+                "Previews the selected result with Quick Look.",
+                SettingsField::PreviewShortcut,
             ),
         ]
         .spacing(8)
@@ -1736,6 +1752,34 @@ impl DeeplensApp {
 
         if let Err(error) = reveal_in_file_manager(&path) {
             self.status = format!("Failed to reveal file: {error}");
+        }
+    }
+
+    fn preview_selected(&mut self) {
+        if !self.settings.preview_enabled {
+            self.status = String::from("Preview disabled");
+            return;
+        }
+
+        self.reconcile_selected_result();
+
+        let Some(index) = self.selected_result else {
+            return;
+        };
+
+        let Some(result) = self.results.get(index) else {
+            return;
+        };
+
+        if result.kind == SearchResultKind::Calculator {
+            self.status = String::from("Preview unavailable");
+            return;
+        }
+
+        if let Err(error) = preview_with_quick_look(&result.path) {
+            self.status = format!("Failed to preview file: {error}");
+        } else {
+            self.status = String::from("Preview opened");
         }
     }
 
@@ -2716,6 +2760,12 @@ fn view_status_label(
         String::from("Result copied")
     } else if status == "Calculation result" {
         String::from("Calculation result")
+    } else if status == "Preview opened" {
+        String::from("Preview opened")
+    } else if status == "Preview disabled" {
+        String::from("Preview disabled")
+    } else if status == "Preview unavailable" {
+        String::from("Preview unavailable")
     } else if status == "Opened terminal" {
         String::from("Opened terminal")
     } else if status == "Install command copied" {
@@ -2789,6 +2839,9 @@ fn status_color(status: &str, min_query_chars: usize) -> Color {
         || status == "Calculating…"
         || status == "Calculation result"
         || status == "Result copied"
+        || status == "Preview opened"
+        || status == "Preview disabled"
+        || status == "Preview unavailable"
         || status == "Waiting…"
         || status == "Path copied"
         || status == "Opened terminal"

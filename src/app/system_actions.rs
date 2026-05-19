@@ -106,3 +106,25 @@ pub(super) fn open_terminal_at(directory: &Path, settings: &AppSettings) -> std:
             .map(|_| ())
     }
 }
+
+pub(super) fn preview_with_quick_look(path: &Path) -> std::io::Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        return std::process::Command::new("qlmanage")
+            .arg("-p")
+            .arg(path)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map(|_| ());
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = path;
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "Quick Look preview is currently only supported on macOS",
+        ))
+    }
+}
