@@ -130,6 +130,8 @@ pub enum Message {
         result: Result<String, String>,
     },
     SetSearchMode(SearchMode),
+    ToggleModePicker,
+    CloseModePicker,
     SelectPrevious,
     SelectNext,
     SelectResult(usize),
@@ -302,6 +304,7 @@ pub struct DeeplensApp {
     pins: Pins,
     actions_open: bool,
     selected_action: usize,
+    mode_picker_open: bool,
 }
 
 impl DeeplensApp {
@@ -351,6 +354,7 @@ impl DeeplensApp {
                 pins,
                 actions_open: false,
                 selected_action: 0,
+                mode_picker_open: false,
             },
             open_main_window.map(Message::MainWindowOpened),
         )
@@ -437,9 +441,18 @@ impl DeeplensApp {
             }
             Message::SetSearchMode(mode) => {
                 self.search_mode = mode;
+                self.mode_picker_open = false;
                 self.user_selected_result = false;
                 self.hovered_result_path = None;
                 self.schedule_search();
+                task = operation::focus(search_input_id());
+            }
+            Message::ToggleModePicker => {
+                self.mode_picker_open = !self.mode_picker_open;
+                task = operation::focus(search_input_id());
+            }
+            Message::CloseModePicker => {
+                self.mode_picker_open = false;
                 task = operation::focus(search_input_id());
             }
             Message::SelectPrevious => {
@@ -461,6 +474,7 @@ impl DeeplensApp {
                 }
             }
             Message::SelectResult(index) => {
+                self.mode_picker_open = false;
                 self.user_selected_result = true;
                 self.select_or_open_result(index);
             }
@@ -481,6 +495,7 @@ impl DeeplensApp {
                 self.accept_ghost_completion();
             }
             Message::ShowActions => {
+                self.mode_picker_open = false;
                 self.show_actions();
             }
             Message::CloseActions => {
@@ -618,6 +633,8 @@ impl DeeplensApp {
             Message::Escape => {
                 if self.actions_open {
                     self.actions_open = false;
+                } else if self.mode_picker_open {
+                    self.mode_picker_open = false;
                 } else if self.running {
                     self.cancel_search();
                 } else if !self.query.is_empty() {
@@ -693,6 +710,7 @@ impl DeeplensApp {
         } else if !self.is_fresh_idle_screen()
             && !self.is_set_command_screen()
             && !self.actions_open
+            && !self.mode_picker_open
         {
             surface = surface.push(
                 container(
@@ -740,17 +758,13 @@ impl DeeplensApp {
             .spacing(10)
             .align_y(Alignment::Center);
 
-        let mode_chips = SearchMode::ALL.iter().fold(row![].spacing(6), |row, mode| {
-            row.push(self.view_mode_chip(*mode))
-        });
-
         let mut controls = row![
             button(text("+").size(18))
                 .padding([3, 9])
                 .style(icon_button)
                 .on_press(Message::ChooseFolder),
             scope_pill(folder_label),
-            mode_chips,
+            self.view_mode_control(),
             Space::new().width(Length::Fill),
         ]
         .spacing(8)
@@ -765,14 +779,18 @@ impl DeeplensApp {
             );
         }
 
-        container(
-            column![search_input, controls, self.view_status_label()]
-                .spacing(10)
-                .padding([10, 14]),
-        )
-        .width(Length::Fill)
-        .style(prompt_style)
-        .into()
+        let mut content = column![search_input, controls].spacing(10);
+
+        if self.mode_picker_open {
+            content = content.push(self.view_mode_picker());
+        }
+
+        content = content.push(self.view_status_label());
+
+        container(content.padding([10, 14]))
+            .width(Length::Fill)
+            .style(prompt_style)
+            .into()
     }
 
     fn view_search_input(&self) -> Element<'_, Message> {
@@ -797,14 +815,38 @@ impl DeeplensApp {
             .into()
     }
 
-    fn view_mode_chip(&self, mode: SearchMode) -> Element<'static, Message> {
-        let selected = mode == self.search_mode;
+    fn view_mode_control(&self) -> Element<'static, Message> {
+        let label = format!("{} ▾", self.search_mode.label());
 
-        button(text(mode.label()).size(12))
-            .padding([5, 9])
-            .style(move |_, status| filter_button_style(status, selected))
-            .on_press(Message::SetSearchMode(mode))
+        button(text(label).size(12))
+            .padding([5, 10])
+            .style(move |_, status| filter_button_style(status, true))
+            .on_press(Message::ToggleModePicker)
             .into()
+    }
+
+    fn view_mode_picker(&self) -> Element<'static, Message> {
+        let options = SearchMode::ALL.iter().fold(row![].spacing(6), |row, mode| {
+            let selected = *mode == self.search_mode;
+            row.push(
+                button(text(mode.label()).size(12))
+                    .padding([5, 10])
+                    .style(move |_, status| filter_button_style(status, selected))
+                    .on_press(Message::SetSearchMode(*mode)),
+            )
+        });
+
+        row![
+            options,
+            Space::new().width(Length::Fill),
+            button(text("Esc").size(11))
+                .padding([4, 8])
+                .style(chip_button)
+                .on_press(Message::CloseModePicker),
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center)
+        .into()
     }
 
     fn view_settings_window(&self) -> Element<'_, Message> {
@@ -2376,6 +2418,8 @@ impl DeeplensApp {
     fn target_window_height(&self) -> f32 {
         if self.visible_result_count() > 0 {
             self.settings.expanded_height
+        } else if self.mode_picker_open {
+            self.settings.compact_height
         } else if self.is_fresh_idle_screen()
             || self.is_set_command_screen()
             || self.is_web_search_command_screen()

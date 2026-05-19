@@ -158,6 +158,9 @@ delay. Both are configurable.
 
 ## Search Modes
 
+The current mode is shown as one compact control next to the scope. Open it to
+switch modes.
+
 - `All`: search apps, folders, and file contents
 - `Apps`: search installed macOS applications
 - `Folders`: search folder names with `fd`
@@ -412,7 +415,7 @@ in daily use.
   it, similar to Quick Look.
 - [x] **Actions menu**: add a small action picker for selected results, such as
   open, reveal, copy path, copy filename, open terminal here, and show info.
-- [ ] **Cleaner mode controls**: replace extra chips with one simple search mode
+- [x] **Cleaner mode controls**: replace extra chips with one simple search mode
   control and keep advanced filters in query syntax.
 - [ ] **Clipboard history**: search and paste recently copied text.
 - [x] **Calculator and unit conversion**: evaluate quick math and conversions
