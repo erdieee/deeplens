@@ -233,7 +233,7 @@ Settings are grouped into:
 
 - `General`: result limits, debounce, minimum query length, window sizes,
   result row height, terminal app, excluded folders, broad-search limits,
-  web search shortcuts, and recents/history ranking
+  web search shortcuts, recents/history ranking, and pins
 - `Style`: colors for the palette, text, chips, selected rows, and highlights
 - `Shortcuts`: global and in-app shortcuts
 
@@ -249,6 +249,12 @@ Recent-result history is stored separately at:
 ~/.deeplens/history.json
 ```
 
+Pinned results are stored separately at:
+
+```text
+~/.deeplens/pins.json
+```
+
 You can also update individual settings from the search box:
 
 ```text
@@ -260,6 +266,9 @@ You can also update individual settings from the search box:
 /set history_enabled true
 /set max_history_items 500
 /set history_recency_boost 300
+/set pins_enabled true
+/set max_pinned_items 100
+/set pin_rank_boost 1500
 /set web_search_shortcuts g=https://www.google.com/search?q={query}, gh=https://github.com/search?q={query}
 /set calculator_enabled true
 /set calculator_requires_prefix false
@@ -280,6 +289,8 @@ You can also update individual settings from the search box:
 - Opened files, folders, and apps are remembered in `~/.deeplens/history.json`
   and boosted in future searches. History is not shown as a separate results
   screen yet.
+- Pinned files, folders, and apps are stored in `~/.deeplens/pins.json`,
+  marked in results, and receive a stronger ranking boost.
 - The visible result list is capped by `max_displayed_results`.
 - Broad searches are bounded by `max_search_events_per_tick` and
   `search_event_limit_multiplier`.
@@ -395,7 +406,7 @@ in daily use.
   word matches without making results noisy.
 - [x] **Recent results**: remember frequently opened files, folders, and apps so
   repeated work is faster than a fresh search.
-- [ ] **Pinned results**: let users keep important files, folders, and apps at
+- [x] **Pinned results**: let users keep important files, folders, and apps at
   the top for matching searches.
 - [x] **Quick preview**: preview the selected file with a shortcut before opening
   it, similar to Quick Look.

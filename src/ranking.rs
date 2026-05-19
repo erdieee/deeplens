@@ -11,6 +11,7 @@ pub fn insert_result(
     query: &str,
     exact_phrase: Option<&str>,
     history_boost: i64,
+    pinned: bool,
 ) {
     let mut should_sort = false;
 
@@ -26,6 +27,7 @@ pub fn insert_result(
             existing.icon_path = result.icon_path;
             should_sort = true;
         }
+        existing.pinned = pinned;
     } else {
         groups.push(GroupedSearchResult {
             score: score_result(&result, query, exact_phrase, history_boost),
@@ -36,6 +38,7 @@ pub fn insert_result(
             match_count: 1,
             kind: result.kind,
             icon_path: result.icon_path,
+            pinned,
         });
         should_sort = true;
     }

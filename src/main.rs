@@ -2,6 +2,7 @@ mod app;
 mod app_search;
 mod calculator;
 mod history;
+mod pins;
 mod query;
 mod ranking;
 mod search;

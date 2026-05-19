@@ -16,6 +16,9 @@ pub struct AppSettings {
     pub history_frequency_boost: usize,
     pub history_recency_boost: usize,
     pub history_recency_days: u64,
+    pub pins_enabled: bool,
+    pub max_pinned_items: usize,
+    pub pin_rank_boost: usize,
     pub calculator_enabled: bool,
     pub calculator_requires_prefix: bool,
     pub calculator_command: String,
@@ -68,6 +71,9 @@ impl Default for AppSettings {
             history_frequency_boost: 35,
             history_recency_boost: 300,
             history_recency_days: 30,
+            pins_enabled: true,
+            max_pinned_items: 100,
+            pin_rank_boost: 1_500,
             calculator_enabled: true,
             calculator_requires_prefix: false,
             calculator_command: String::from("numbat"),
@@ -125,6 +131,9 @@ pub struct SettingsForm {
     pub history_frequency_boost: String,
     pub history_recency_boost: String,
     pub history_recency_days: String,
+    pub pins_enabled: String,
+    pub max_pinned_items: String,
+    pub pin_rank_boost: String,
     pub calculator_enabled: String,
     pub calculator_requires_prefix: String,
     pub calculator_command: String,
@@ -177,6 +186,9 @@ impl From<&AppSettings> for SettingsForm {
             history_frequency_boost: settings.history_frequency_boost.to_string(),
             history_recency_boost: settings.history_recency_boost.to_string(),
             history_recency_days: settings.history_recency_days.to_string(),
+            pins_enabled: settings.pins_enabled.to_string(),
+            max_pinned_items: settings.max_pinned_items.to_string(),
+            pin_rank_boost: settings.pin_rank_boost.to_string(),
             calculator_enabled: settings.calculator_enabled.to_string(),
             calculator_requires_prefix: settings.calculator_requires_prefix.to_string(),
             calculator_command: settings.calculator_command.clone(),
@@ -243,6 +255,9 @@ impl SettingsForm {
                 "History recency boost",
             )?,
             history_recency_days: parse_u64(&self.history_recency_days, "History recency days")?,
+            pins_enabled: parse_bool(&self.pins_enabled, "Pins enabled")?,
+            max_pinned_items: parse_usize(&self.max_pinned_items, "Max pinned items")?,
+            pin_rank_boost: parse_usize(&self.pin_rank_boost, "Pin rank boost")?,
             calculator_enabled: parse_bool(&self.calculator_enabled, "Calculator enabled")?,
             calculator_requires_prefix: parse_bool(
                 &self.calculator_requires_prefix,
@@ -317,6 +332,10 @@ impl SettingsForm {
 
         if settings.max_history_items == 0 {
             return Err(String::from("Max history items must be at least 1."));
+        }
+
+        if settings.max_pinned_items == 0 {
+            return Err(String::from("Max pinned items must be at least 1."));
         }
 
         if settings.min_query_chars == 0 {

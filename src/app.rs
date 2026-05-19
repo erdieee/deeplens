@@ -12,6 +12,7 @@ use crate::app::system_actions::{
 };
 use crate::calculator;
 use crate::history::SearchHistory;
+use crate::pins::Pins;
 use crate::query::{self, ParsedQuery};
 use crate::ranking;
 use crate::search::{self, SearchHandle, SearchOptions};
@@ -221,6 +222,8 @@ pub enum ResultAction {
     CopyFilename,
     OpenTerminal,
     CopyResult,
+    Pin,
+    Unpin,
 }
 
 impl ResultAction {
@@ -233,6 +236,8 @@ impl ResultAction {
             Self::CopyFilename => "Copy Filename",
             Self::OpenTerminal => "Open Terminal Here",
             Self::CopyResult => "Copy Result",
+            Self::Pin => "Pin",
+            Self::Unpin => "Unpin",
         }
     }
 }
@@ -294,6 +299,7 @@ pub struct DeeplensApp {
     settings_form: SettingsForm,
     settings_tab: SettingsTab,
     history: SearchHistory,
+    pins: Pins,
     actions_open: bool,
     selected_action: usize,
 }
@@ -304,6 +310,7 @@ impl DeeplensApp {
         let settings_form = SettingsForm::from(&settings);
         let idle_height = settings.idle_height;
         let history = SearchHistory::load();
+        let pins = Pins::load();
         let (main_window_id, open_main_window) = window::open(main_window_settings(&settings));
 
         (
@@ -341,6 +348,7 @@ impl DeeplensApp {
                 settings_form,
                 settings_tab: SettingsTab::General,
                 history,
+                pins,
                 actions_open: false,
                 selected_action: 0,
             },
@@ -921,6 +929,24 @@ impl DeeplensApp {
                 &self.settings_form.history_recency_days,
                 "Number of days before the recency boost decays to zero.",
                 SettingsField::HistoryRecencyDays,
+            ),
+            settings_field(
+                "Pins enabled",
+                &self.settings_form.pins_enabled,
+                "Lets pinned results receive a strong ranking boost.",
+                SettingsField::PinsEnabled,
+            ),
+            settings_field(
+                "Max pinned items",
+                &self.settings_form.max_pinned_items,
+                "Maximum number of pinned results stored.",
+                SettingsField::MaxPinnedItems,
+            ),
+            settings_field(
+                "Pin rank boost",
+                &self.settings_form.pin_rank_boost,
+                "Ranking boost applied to pinned matching results.",
+                SettingsField::PinRankBoost,
             ),
             settings_field(
                 "Calculator enabled",
@@ -1510,6 +1536,7 @@ impl DeeplensApp {
                     score: 2_000,
                     kind: SearchResultKind::Calculator,
                     icon_path: None,
+                    pinned: false,
                 });
                 let _ = self.select_first_visible();
                 self.status = String::from("Calculation result");
@@ -1649,12 +1676,15 @@ impl DeeplensApp {
 
                     if self.results.len() < self.settings.max_displayed_results {
                         let history_boost = self.history.score_for(&result.path, &self.settings);
+                        let pin_boost = self.pins.score_for(&result.path, &self.settings);
+                        let pinned = self.pins.is_pinned(&result.path);
                         ranking::insert_result(
                             &mut self.results,
                             result,
                             &self.active_search_text,
                             self.active_exact_phrase.as_deref(),
-                            history_boost,
+                            history_boost.saturating_add(pin_boost),
+                            pinned,
                         );
 
                         if !self.user_selected_result {
@@ -1876,6 +1906,14 @@ impl DeeplensApp {
                 Task::none()
             }
             ResultAction::CopyResult => self.copy_selected_result(),
+            ResultAction::Pin => {
+                self.pin_selected();
+                Task::none()
+            }
+            ResultAction::Unpin => {
+                self.unpin_selected();
+                Task::none()
+            }
         }
     }
 
@@ -2029,6 +2067,79 @@ impl DeeplensApp {
         clipboard::write(result.snippet.clone())
     }
 
+    fn pin_selected(&mut self) {
+        if !self.settings.pins_enabled {
+            self.status = String::from("Pins disabled");
+            return;
+        }
+
+        self.reconcile_selected_result();
+
+        let Some(index) = self.selected_result else {
+            return;
+        };
+
+        let Some(result) = self.results.get(index) else {
+            return;
+        };
+
+        if result.kind == SearchResultKind::Calculator {
+            self.status = String::from("Pin unavailable");
+            return;
+        }
+
+        let path = result.path.clone();
+        let kind = result.kind;
+
+        match self.pins.pin(&path, kind, &self.settings) {
+            Ok(()) => {
+                if let Some(result) = self.results.get_mut(index) {
+                    result.pinned = true;
+                    result.score = result
+                        .score
+                        .saturating_add(self.settings.pin_rank_boost as i64);
+                }
+                self.results
+                    .sort_by_key(|result| std::cmp::Reverse(result.score));
+                self.selected_result_path = Some(path);
+                self.reconcile_selected_result();
+                self.status = String::from("Pinned");
+            }
+            Err(error) => self.status = format_error_status(error),
+        }
+    }
+
+    fn unpin_selected(&mut self) {
+        self.reconcile_selected_result();
+
+        let Some(index) = self.selected_result else {
+            return;
+        };
+
+        let Some(result) = self.results.get(index) else {
+            return;
+        };
+
+        let path = result.path.clone();
+
+        match self.pins.unpin(&path) {
+            Ok(()) => {
+                if let Some(result) = self.results.get_mut(index) {
+                    result.pinned = false;
+                    result.score = result
+                        .score
+                        .saturating_sub(self.settings.pin_rank_boost as i64);
+                }
+                self.results
+                    .sort_by_key(|result| std::cmp::Reverse(result.score));
+                self.selected_result_path = Some(path);
+                self.reconcile_selected_result();
+                self.status = String::from("Unpinned");
+            }
+            Err(error) => self.status = format_error_status(error),
+        }
+    }
+
     fn available_actions(&self) -> Vec<ResultAction> {
         let Some(index) = self.selected_result else {
             return Vec::new();
@@ -2052,6 +2163,14 @@ impl DeeplensApp {
 
         if result.kind != SearchResultKind::Application {
             actions.push(ResultAction::OpenTerminal);
+        }
+
+        if self.settings.pins_enabled {
+            if result.pinned {
+                actions.push(ResultAction::Unpin);
+            } else {
+                actions.push(ResultAction::Pin);
+            }
         }
 
         actions
@@ -2143,13 +2262,18 @@ impl DeeplensApp {
             Ok(settings) => {
                 self.settings = settings;
                 self.history.trim(self.settings.max_history_items);
+                self.pins.trim(self.settings.max_pinned_items);
                 let history_error = self.history.save().err();
+                let pins_error = self.pins.save().err();
                 let shortcut_error = self.reload_global_shortcut().err();
                 self.status = match settings::save(&self.settings) {
                     Ok(path) => format!("Settings saved to {}", path.display()),
                     Err(error) => format_error_status(error),
                 };
                 if let Some(error) = history_error {
+                    self.status = format_error_status(error);
+                }
+                if let Some(error) = pins_error {
                     self.status = format_error_status(error);
                 }
                 if let Some(error) = shortcut_error {
@@ -2188,7 +2312,9 @@ impl DeeplensApp {
                 self.settings = settings;
                 self.settings_form = SettingsForm::from(&self.settings);
                 self.history.trim(self.settings.max_history_items);
+                self.pins.trim(self.settings.max_pinned_items);
                 let history_error = self.history.save().err();
+                let pins_error = self.pins.save().err();
                 let shortcut_error = self.reload_global_shortcut().err();
                 self.query.clear();
                 self.pending_search = false;
@@ -2203,6 +2329,9 @@ impl DeeplensApp {
                     self.status = format_error_status(error);
                 }
                 if let Some(error) = history_error {
+                    self.status = format_error_status(error);
+                }
+                if let Some(error) = pins_error {
                     self.status = format_error_status(error);
                 }
 
@@ -2544,6 +2673,10 @@ impl DeeplensApp {
             || self.status == "Actions"
             || self.status == "Actions disabled"
             || self.status == "Filename copied"
+            || self.status == "Pinned"
+            || self.status == "Pins disabled"
+            || self.status == "Pin unavailable"
+            || self.status == "Unpinned"
             || self.status == "Preview opened"
             || self.status == "Preview disabled"
             || self.status == "Preview unavailable"
@@ -2749,7 +2882,11 @@ fn view_result_row(
             .to_owned()
     });
 
-    let path = result_path_label(result);
+    let path = if result.pinned {
+        format!("PIN {}", result_path_label(result))
+    } else {
+        result_path_label(result)
+    };
     let snippet = result.snippet.trim();
 
     let title_font = Font {
@@ -3059,6 +3196,14 @@ fn view_status_label(
         String::from("Actions disabled")
     } else if status == "Filename copied" {
         String::from("Filename copied")
+    } else if status == "Pinned" {
+        String::from("Pinned")
+    } else if status == "Pins disabled" {
+        String::from("Pins disabled")
+    } else if status == "Pin unavailable" {
+        String::from("Pin unavailable")
+    } else if status == "Unpinned" {
+        String::from("Unpinned")
     } else if status == "Opened terminal" {
         String::from("Opened terminal")
     } else if status == "Install command copied" {
@@ -3138,6 +3283,10 @@ fn status_color(status: &str, min_query_chars: usize) -> Color {
         || status == "Actions"
         || status == "Actions disabled"
         || status == "Filename copied"
+        || status == "Pinned"
+        || status == "Pins disabled"
+        || status == "Pin unavailable"
+        || status == "Unpinned"
         || status == "Waiting…"
         || status == "Path copied"
         || status == "Opened terminal"

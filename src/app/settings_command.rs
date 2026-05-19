@@ -10,6 +10,9 @@ pub enum SettingsField {
     HistoryFrequencyBoost,
     HistoryRecencyBoost,
     HistoryRecencyDays,
+    PinsEnabled,
+    MaxPinnedItems,
+    PinRankBoost,
     CalculatorEnabled,
     CalculatorRequiresPrefix,
     CalculatorCommand,
@@ -62,6 +65,9 @@ impl SettingsField {
             SettingsField::HistoryFrequencyBoost => "history_frequency_boost",
             SettingsField::HistoryRecencyBoost => "history_recency_boost",
             SettingsField::HistoryRecencyDays => "history_recency_days",
+            SettingsField::PinsEnabled => "pins_enabled",
+            SettingsField::MaxPinnedItems => "max_pinned_items",
+            SettingsField::PinRankBoost => "pin_rank_boost",
             SettingsField::CalculatorEnabled => "calculator_enabled",
             SettingsField::CalculatorRequiresPrefix => "calculator_requires_prefix",
             SettingsField::CalculatorCommand => "calculator_command",
@@ -124,6 +130,9 @@ impl SettingsField {
                 Some(Self::HistoryRecencyBoost)
             }
             "historyrecencydays" | "recencydays" | "recentdays" => Some(Self::HistoryRecencyDays),
+            "pinsenabled" | "pins" => Some(Self::PinsEnabled),
+            "maxpinneditems" | "pinneditems" | "maxpins" => Some(Self::MaxPinnedItems),
+            "pinrankboost" | "pinboost" => Some(Self::PinRankBoost),
             "calculatorenabled" | "calculator" | "calc" => Some(Self::CalculatorEnabled),
             "calculatorrequiresprefix" | "calcrequiresprefix" | "calcprefix" => {
                 Some(Self::CalculatorRequiresPrefix)
@@ -266,6 +275,9 @@ pub(super) fn update_settings_form_value(
         SettingsField::HistoryFrequencyBoost => form.history_frequency_boost = value,
         SettingsField::HistoryRecencyBoost => form.history_recency_boost = value,
         SettingsField::HistoryRecencyDays => form.history_recency_days = value,
+        SettingsField::PinsEnabled => form.pins_enabled = value,
+        SettingsField::MaxPinnedItems => form.max_pinned_items = value,
+        SettingsField::PinRankBoost => form.pin_rank_boost = value,
         SettingsField::CalculatorEnabled => form.calculator_enabled = value,
         SettingsField::CalculatorRequiresPrefix => form.calculator_requires_prefix = value,
         SettingsField::CalculatorCommand => form.calculator_command = value,
@@ -324,6 +336,9 @@ const SETTINGS_COMMAND_NAMES: &[&str] = &[
     "history_frequency_boost",
     "history_recency_boost",
     "history_recency_days",
+    "pins_enabled",
+    "max_pinned_items",
+    "pin_rank_boost",
     "calculator_enabled",
     "calculator_requires_prefix",
     "calculator_command",
@@ -475,6 +490,14 @@ mod tests {
             Some(SetCommand::Ready {
                 field: SettingsField::ActionsShortcut,
                 value: String::from("cmd+k"),
+            })
+        );
+
+        assert_eq!(
+            parse_set_command("/set pin-boost 2000"),
+            Some(SetCommand::Ready {
+                field: SettingsField::PinRankBoost,
+                value: String::from("2000"),
             })
         );
     }

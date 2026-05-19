@@ -20,6 +20,7 @@ pub struct GroupedSearchResult {
     pub score: i64,
     pub kind: SearchResultKind,
     pub icon_path: Option<PathBuf>,
+    pub pinned: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
