@@ -135,6 +135,9 @@ pub enum Message {
     HoverResult(usize),
     ClearHoveredResult(usize),
     AcceptGhostCompletion,
+    ShowActions,
+    CloseActions,
+    RunAction(ResultAction),
     RevealSelected,
     PreviewSelected,
     OpenSelectedInTerminal,
@@ -210,6 +213,31 @@ enum NavigationDirection {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResultAction {
+    Open,
+    Preview,
+    Reveal,
+    CopyPath,
+    CopyFilename,
+    OpenTerminal,
+    CopyResult,
+}
+
+impl ResultAction {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Open => "Open",
+            Self::Preview => "Preview",
+            Self::Reveal => "Reveal in Finder",
+            Self::CopyPath => "Copy Path",
+            Self::CopyFilename => "Copy Filename",
+            Self::OpenTerminal => "Open Terminal Here",
+            Self::CopyResult => "Copy Result",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsTab {
     General,
     Style,
@@ -266,6 +294,8 @@ pub struct DeeplensApp {
     settings_form: SettingsForm,
     settings_tab: SettingsTab,
     history: SearchHistory,
+    actions_open: bool,
+    selected_action: usize,
 }
 
 impl DeeplensApp {
@@ -311,6 +341,8 @@ impl DeeplensApp {
                 settings_form,
                 settings_tab: SettingsTab::General,
                 history,
+                actions_open: false,
+                selected_action: 0,
             },
             open_main_window.map(Message::MainWindowOpened),
         )
@@ -403,14 +435,22 @@ impl DeeplensApp {
                 task = operation::focus(search_input_id());
             }
             Message::SelectPrevious => {
-                self.user_selected_result = true;
-                self.hovered_result_path = None;
-                task = self.select_previous();
+                if self.actions_open {
+                    self.select_previous_action();
+                } else {
+                    self.user_selected_result = true;
+                    self.hovered_result_path = None;
+                    task = self.select_previous();
+                }
             }
             Message::SelectNext => {
-                self.user_selected_result = true;
-                self.hovered_result_path = None;
-                task = self.select_next();
+                if self.actions_open {
+                    self.select_next_action();
+                } else {
+                    self.user_selected_result = true;
+                    self.hovered_result_path = None;
+                    task = self.select_next();
+                }
             }
             Message::SelectResult(index) => {
                 self.user_selected_result = true;
@@ -432,6 +472,15 @@ impl DeeplensApp {
             Message::AcceptGhostCompletion => {
                 self.accept_ghost_completion();
             }
+            Message::ShowActions => {
+                self.show_actions();
+            }
+            Message::CloseActions => {
+                self.actions_open = false;
+            }
+            Message::RunAction(action) => {
+                task = self.run_action(action);
+            }
             Message::RevealSelected => {
                 self.reveal_selected();
             }
@@ -442,10 +491,7 @@ impl DeeplensApp {
                 self.open_selected_in_terminal();
             }
             Message::CopySelectedPath => {
-                if let Some(path) = self.selected_path() {
-                    self.status = String::from("Path copied");
-                    task = clipboard::write(path.to_string_lossy().to_string());
-                }
+                task = self.copy_selected_path();
             }
             Message::CopyInstallCommand => {
                 self.status = String::from("Install command copied");
@@ -562,7 +608,9 @@ impl DeeplensApp {
                 }
             }
             Message::Escape => {
-                if self.running {
+                if self.actions_open {
+                    self.actions_open = false;
+                } else if self.running {
                     self.cancel_search();
                 } else if !self.query.is_empty() {
                     self.query.clear();
@@ -634,7 +682,10 @@ impl DeeplensApp {
                     .height(Length::Fill)
                     .width(Length::Fill),
             );
-        } else if !self.is_fresh_idle_screen() && !self.is_set_command_screen() {
+        } else if !self.is_fresh_idle_screen()
+            && !self.is_set_command_screen()
+            && !self.actions_open
+        {
             surface = surface.push(
                 container(
                     scrollable(list)
@@ -647,6 +698,10 @@ impl DeeplensApp {
                 .height(Length::Fill)
                 .padding([0, 2]),
             );
+        }
+
+        if self.actions_open {
+            surface = surface.push(self.view_actions_menu());
         }
 
         if self.rga_is_missing() {
@@ -892,6 +947,12 @@ impl DeeplensApp {
                 SettingsField::PreviewEnabled,
             ),
             settings_field(
+                "Actions enabled",
+                &self.settings_form.actions_enabled,
+                "Shows a command menu for the selected result.",
+                SettingsField::ActionsEnabled,
+            ),
+            settings_field(
                 "Debounce ms",
                 &self.settings_form.search_debounce_ms,
                 "Wait time after typing before a search starts.",
@@ -1103,6 +1164,12 @@ impl DeeplensApp {
                 "Previews the selected result with Quick Look.",
                 SettingsField::PreviewShortcut,
             ),
+            settings_field(
+                "Actions shortcut",
+                &self.settings_form.actions_shortcut,
+                "Opens the selected result actions menu.",
+                SettingsField::ActionsShortcut,
+            ),
         ]
         .spacing(8)
         .into()
@@ -1158,7 +1225,60 @@ impl DeeplensApp {
         .into()
     }
 
+    fn view_actions_menu(&self) -> Element<'_, Message> {
+        let actions = self.available_actions();
+        let rows = actions.iter().copied().enumerate().fold(
+            column![].spacing(2),
+            |column, (index, action)| {
+                let selected = index == self.selected_action;
+
+                column.push(
+                    button(
+                        row![
+                            text(action.label()).size(13).color(TEXT),
+                            Space::new().width(Length::Fill),
+                            if selected {
+                                text("Enter").size(11).color(MUTED)
+                            } else {
+                                text("").size(11)
+                            }
+                        ]
+                        .align_y(Alignment::Center),
+                    )
+                    .padding([7, 9])
+                    .width(Length::Fill)
+                    .style(move |_, status| filter_button_style(status, selected))
+                    .on_press(Message::RunAction(action)),
+                )
+            },
+        );
+
+        container(
+            column![
+                row![
+                    text("Actions").size(14).color(TEXT),
+                    Space::new().width(Length::Fill),
+                    button(text("Esc").size(11))
+                        .padding([4, 8])
+                        .style(chip_button)
+                        .on_press(Message::CloseActions),
+                ]
+                .align_y(Alignment::Center),
+                rows,
+            ]
+            .spacing(6),
+        )
+        .padding(10)
+        .style(prompt_style)
+        .width(Length::Fill)
+        .into()
+    }
+
     fn submit(&mut self) -> Task<Message> {
+        if self.actions_open {
+            return self.run_selected_action();
+        }
+
         if let Some(task) = self.commit_set_command() {
             return task;
         }
@@ -1652,6 +1772,7 @@ impl DeeplensApp {
     }
 
     fn select_or_open_result(&mut self, index: usize) {
+        self.actions_open = false;
         let now = Instant::now();
         let double_clicked = self
             .last_result_click
@@ -1682,6 +1803,80 @@ impl DeeplensApp {
         }
 
         Task::none()
+    }
+
+    fn show_actions(&mut self) {
+        if !self.settings.actions_enabled {
+            self.status = String::from("Actions disabled");
+            return;
+        }
+
+        self.reconcile_selected_result();
+
+        if self.selected_result.is_none() || self.available_actions().is_empty() {
+            return;
+        }
+
+        self.actions_open = true;
+        self.selected_action = 0;
+        self.status = String::from("Actions");
+    }
+
+    fn close_actions(&mut self) {
+        self.actions_open = false;
+    }
+
+    fn select_previous_action(&mut self) {
+        let count = self.available_actions().len();
+        if count == 0 {
+            self.close_actions();
+            return;
+        }
+
+        self.selected_action = self.selected_action.saturating_sub(1);
+    }
+
+    fn select_next_action(&mut self) {
+        let count = self.available_actions().len();
+        if count == 0 {
+            self.close_actions();
+            return;
+        }
+
+        self.selected_action = (self.selected_action + 1).min(count - 1);
+    }
+
+    fn run_selected_action(&mut self) -> Task<Message> {
+        let actions = self.available_actions();
+        let Some(action) = actions.get(self.selected_action).copied() else {
+            self.close_actions();
+            return Task::none();
+        };
+
+        self.run_action(action)
+    }
+
+    fn run_action(&mut self, action: ResultAction) -> Task<Message> {
+        self.close_actions();
+
+        match action {
+            ResultAction::Open => self.open_selected(),
+            ResultAction::Preview => {
+                self.preview_selected();
+                Task::none()
+            }
+            ResultAction::Reveal => {
+                self.reveal_selected();
+                Task::none()
+            }
+            ResultAction::CopyPath => self.copy_selected_path(),
+            ResultAction::CopyFilename => self.copy_selected_filename(),
+            ResultAction::OpenTerminal => {
+                self.open_selected_in_terminal();
+                Task::none()
+            }
+            ResultAction::CopyResult => self.copy_selected_result(),
+        }
     }
 
     fn accept_ghost_completion(&mut self) {
@@ -1781,6 +1976,85 @@ impl DeeplensApp {
         } else {
             self.status = String::from("Preview opened");
         }
+    }
+
+    fn copy_selected_path(&mut self) -> Task<Message> {
+        if let Some(path) = self.selected_path() {
+            self.status = String::from("Path copied");
+            clipboard::write(path.to_string_lossy().to_string())
+        } else {
+            Task::none()
+        }
+    }
+
+    fn copy_selected_filename(&mut self) -> Task<Message> {
+        self.reconcile_selected_result();
+
+        let Some(index) = self.selected_result else {
+            return Task::none();
+        };
+
+        let Some(result) = self.results.get(index) else {
+            return Task::none();
+        };
+
+        let value = result
+            .title
+            .clone()
+            .or_else(|| {
+                result
+                    .path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .map(ToOwned::to_owned)
+            })
+            .unwrap_or_else(|| result.path.to_string_lossy().to_string());
+
+        self.status = String::from("Filename copied");
+        clipboard::write(value)
+    }
+
+    fn copy_selected_result(&mut self) -> Task<Message> {
+        self.reconcile_selected_result();
+
+        let Some(index) = self.selected_result else {
+            return Task::none();
+        };
+
+        let Some(result) = self.results.get(index) else {
+            return Task::none();
+        };
+
+        self.status = String::from("Result copied");
+        clipboard::write(result.snippet.clone())
+    }
+
+    fn available_actions(&self) -> Vec<ResultAction> {
+        let Some(index) = self.selected_result else {
+            return Vec::new();
+        };
+
+        let Some(result) = self.results.get(index) else {
+            return Vec::new();
+        };
+
+        if result.kind == SearchResultKind::Calculator {
+            return vec![ResultAction::CopyResult];
+        }
+
+        let mut actions = vec![
+            ResultAction::Open,
+            ResultAction::Preview,
+            ResultAction::Reveal,
+            ResultAction::CopyPath,
+            ResultAction::CopyFilename,
+        ];
+
+        if result.kind != SearchResultKind::Application {
+            actions.push(ResultAction::OpenTerminal);
+        }
+
+        actions
     }
 
     fn open_selected_in_terminal(&mut self) {
@@ -2093,6 +2367,13 @@ impl DeeplensApp {
     fn select_result_index(&mut self, index: usize) {
         self.selected_result = Some(index);
         self.selected_result_path = self.results.get(index).map(|result| result.path.clone());
+        let count = self.available_actions().len();
+        if count > 0 {
+            self.selected_action = self.selected_action.min(count - 1);
+        } else {
+            self.actions_open = false;
+            self.selected_action = 0;
+        }
     }
 
     fn reconcile_selected_result(&mut self) {
@@ -2260,6 +2541,12 @@ impl DeeplensApp {
             || self.status == "Calculating…"
             || self.status == "Calculation result"
             || self.status == "Result copied"
+            || self.status == "Actions"
+            || self.status == "Actions disabled"
+            || self.status == "Filename copied"
+            || self.status == "Preview opened"
+            || self.status == "Preview disabled"
+            || self.status == "Preview unavailable"
             || self.status.starts_with("Searching ")
             || self.status == "Waiting…"
             || self.status == "Search cancelled"
@@ -2766,6 +3053,12 @@ fn view_status_label(
         String::from("Preview disabled")
     } else if status == "Preview unavailable" {
         String::from("Preview unavailable")
+    } else if status == "Actions" {
+        String::from("Actions")
+    } else if status == "Actions disabled" {
+        String::from("Actions disabled")
+    } else if status == "Filename copied" {
+        String::from("Filename copied")
     } else if status == "Opened terminal" {
         String::from("Opened terminal")
     } else if status == "Install command copied" {
@@ -2842,6 +3135,9 @@ fn status_color(status: &str, min_query_chars: usize) -> Color {
         || status == "Preview opened"
         || status == "Preview disabled"
         || status == "Preview unavailable"
+        || status == "Actions"
+        || status == "Actions disabled"
+        || status == "Filename copied"
         || status == "Waiting…"
         || status == "Path copied"
         || status == "Opened terminal"

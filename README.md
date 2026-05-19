@@ -204,6 +204,7 @@ Default shortcuts:
 | `Cmd+Shift+Space` | Show or hide DeepLens |
 | `Cmd+,` | Open settings |
 | `Enter` | Open selected result |
+| `Cmd+K` | Open selected result actions |
 | `Space` | Preview selected result with Quick Look |
 | `Cmd+Enter` | Reveal selected result in Finder |
 | `Cmd+C` | Copy selected path |
@@ -264,6 +265,8 @@ You can also update individual settings from the search box:
 /set calculator_requires_prefix false
 /set preview_enabled true
 /set preview_shortcut space
+/set actions_enabled true
+/set actions_shortcut cmd+k
 /set global_shortcut cmd+shift+space
 ```
 
@@ -396,7 +399,7 @@ in daily use.
   the top for matching searches.
 - [x] **Quick preview**: preview the selected file with a shortcut before opening
   it, similar to Quick Look.
-- [ ] **Actions menu**: add a small action picker for selected results, such as
+- [x] **Actions menu**: add a small action picker for selected results, such as
   open, reveal, copy path, copy filename, open terminal here, and show info.
 - [ ] **Cleaner mode controls**: replace extra chips with one simple search mode
   control and keep advanced filters in query syntax.

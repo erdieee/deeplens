@@ -14,6 +14,7 @@ pub enum SettingsField {
     CalculatorRequiresPrefix,
     CalculatorCommand,
     PreviewEnabled,
+    ActionsEnabled,
     SearchDebounceMs,
     DoubleClickMs,
     MinQueryChars,
@@ -36,6 +37,7 @@ pub enum SettingsField {
     CopyPathShortcut,
     TerminalShortcut,
     PreviewShortcut,
+    ActionsShortcut,
     SurfaceColor,
     PromptColor,
     TextColor,
@@ -64,6 +66,7 @@ impl SettingsField {
             SettingsField::CalculatorRequiresPrefix => "calculator_requires_prefix",
             SettingsField::CalculatorCommand => "calculator_command",
             SettingsField::PreviewEnabled => "preview_enabled",
+            SettingsField::ActionsEnabled => "actions_enabled",
             SettingsField::SearchDebounceMs => "search_debounce_ms",
             SettingsField::DoubleClickMs => "double_click_ms",
             SettingsField::MinQueryChars => "min_query_chars",
@@ -86,6 +89,7 @@ impl SettingsField {
             SettingsField::CopyPathShortcut => "copy_path_shortcut",
             SettingsField::TerminalShortcut => "terminal_shortcut",
             SettingsField::PreviewShortcut => "preview_shortcut",
+            SettingsField::ActionsShortcut => "actions_shortcut",
             SettingsField::SurfaceColor => "surface_color",
             SettingsField::PromptColor => "prompt_color",
             SettingsField::TextColor => "text_color",
@@ -126,6 +130,7 @@ impl SettingsField {
             }
             "calculatorcommand" | "calccommand" | "numbatcommand" => Some(Self::CalculatorCommand),
             "previewenabled" | "preview" | "quicklook" => Some(Self::PreviewEnabled),
+            "actionsenabled" | "actions" | "actionsmenu" => Some(Self::ActionsEnabled),
             "searchdebouncems" | "debouncems" | "debounce" => Some(Self::SearchDebounceMs),
             "doubleclickms" | "doubleclick" => Some(Self::DoubleClickMs),
             "minquerychars" | "minchars" => Some(Self::MinQueryChars),
@@ -158,6 +163,9 @@ impl SettingsField {
             "copypathshortcut" | "copyshortcut" | "copy" => Some(Self::CopyPathShortcut),
             "terminalshortcut" | "terminalhotkey" => Some(Self::TerminalShortcut),
             "previewshortcut" | "quicklookshortcut" => Some(Self::PreviewShortcut),
+            "actionsshortcut" | "actionshortcut" | "actionsmenuhotkey" => {
+                Some(Self::ActionsShortcut)
+            }
             "surfacecolor" | "surface" => Some(Self::SurfaceColor),
             "promptcolor" | "prompt" => Some(Self::PromptColor),
             "textcolor" | "text" => Some(Self::TextColor),
@@ -262,6 +270,7 @@ pub(super) fn update_settings_form_value(
         SettingsField::CalculatorRequiresPrefix => form.calculator_requires_prefix = value,
         SettingsField::CalculatorCommand => form.calculator_command = value,
         SettingsField::PreviewEnabled => form.preview_enabled = value,
+        SettingsField::ActionsEnabled => form.actions_enabled = value,
         SettingsField::SearchDebounceMs => form.search_debounce_ms = value,
         SettingsField::DoubleClickMs => form.double_click_ms = value,
         SettingsField::MinQueryChars => form.min_query_chars = value,
@@ -284,6 +293,7 @@ pub(super) fn update_settings_form_value(
         SettingsField::CopyPathShortcut => form.copy_path_shortcut = value,
         SettingsField::TerminalShortcut => form.terminal_shortcut = value,
         SettingsField::PreviewShortcut => form.preview_shortcut = value,
+        SettingsField::ActionsShortcut => form.actions_shortcut = value,
         SettingsField::SurfaceColor => form.surface_color = value,
         SettingsField::PromptColor => form.prompt_color = value,
         SettingsField::TextColor => form.text_color = value,
@@ -318,6 +328,7 @@ const SETTINGS_COMMAND_NAMES: &[&str] = &[
     "calculator_requires_prefix",
     "calculator_command",
     "preview_enabled",
+    "actions_enabled",
     "search_debounce_ms",
     "double_click_ms",
     "min_query_chars",
@@ -340,6 +351,7 @@ const SETTINGS_COMMAND_NAMES: &[&str] = &[
     "copy_path_shortcut",
     "terminal_shortcut",
     "preview_shortcut",
+    "actions_shortcut",
     "surface_color",
     "prompt_color",
     "text_color",
@@ -455,6 +467,14 @@ mod tests {
             Some(SetCommand::Ready {
                 field: SettingsField::PreviewShortcut,
                 value: String::from("space"),
+            })
+        );
+
+        assert_eq!(
+            parse_set_command("/set actions-shortcut cmd+k"),
+            Some(SetCommand::Ready {
+                field: SettingsField::ActionsShortcut,
+                value: String::from("cmd+k"),
             })
         );
     }
