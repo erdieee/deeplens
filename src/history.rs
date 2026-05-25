@@ -128,6 +128,7 @@ fn history_kind(kind: SearchResultKind) -> &'static str {
         SearchResultKind::Application => "app",
         SearchResultKind::Calculator => "calculator",
         SearchResultKind::Clipboard => "clipboard",
+        SearchResultKind::CustomCommand => "command",
     }
 }
 

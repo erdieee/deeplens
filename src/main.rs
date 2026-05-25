@@ -2,6 +2,7 @@ mod app;
 mod app_search;
 mod calculator;
 mod clipboard_history;
+mod custom_commands;
 mod history;
 mod pins;
 mod query;

@@ -26,6 +26,8 @@ pub struct AppSettings {
     pub max_clipboard_items: usize,
     pub max_clipboard_text_bytes: usize,
     pub clipboard_poll_ms: u64,
+    pub custom_commands_enabled: bool,
+    pub max_custom_command_results: usize,
     pub preview_enabled: bool,
     pub actions_enabled: bool,
     pub search_debounce_ms: u64,
@@ -85,6 +87,8 @@ impl Default for AppSettings {
             max_clipboard_items: 200,
             max_clipboard_text_bytes: 20_000,
             clipboard_poll_ms: 1_000,
+            custom_commands_enabled: true,
+            max_custom_command_results: 50,
             preview_enabled: true,
             actions_enabled: true,
             search_debounce_ms: 650,
@@ -149,6 +153,8 @@ pub struct SettingsForm {
     pub max_clipboard_items: String,
     pub max_clipboard_text_bytes: String,
     pub clipboard_poll_ms: String,
+    pub custom_commands_enabled: String,
+    pub max_custom_command_results: String,
     pub preview_enabled: String,
     pub actions_enabled: String,
     pub search_debounce_ms: String,
@@ -208,6 +214,8 @@ impl From<&AppSettings> for SettingsForm {
             max_clipboard_items: settings.max_clipboard_items.to_string(),
             max_clipboard_text_bytes: settings.max_clipboard_text_bytes.to_string(),
             clipboard_poll_ms: settings.clipboard_poll_ms.to_string(),
+            custom_commands_enabled: settings.custom_commands_enabled.to_string(),
+            max_custom_command_results: settings.max_custom_command_results.to_string(),
             preview_enabled: settings.preview_enabled.to_string(),
             actions_enabled: settings.actions_enabled.to_string(),
             search_debounce_ms: settings.search_debounce_ms.to_string(),
@@ -293,6 +301,14 @@ impl SettingsForm {
                 "Max clipboard text bytes",
             )?,
             clipboard_poll_ms: parse_u64(&self.clipboard_poll_ms, "Clipboard poll interval")?,
+            custom_commands_enabled: parse_bool(
+                &self.custom_commands_enabled,
+                "Custom commands enabled",
+            )?,
+            max_custom_command_results: parse_usize(
+                &self.max_custom_command_results,
+                "Max custom command results",
+            )?,
             preview_enabled: parse_bool(&self.preview_enabled, "Preview enabled")?,
             actions_enabled: parse_bool(&self.actions_enabled, "Actions enabled")?,
             search_debounce_ms: parse_u64(&self.search_debounce_ms, "Debounce")?,
@@ -375,6 +391,12 @@ impl SettingsForm {
         if settings.clipboard_poll_ms == 0 {
             return Err(String::from(
                 "Clipboard poll interval must be at least 1 ms.",
+            ));
+        }
+
+        if settings.max_custom_command_results == 0 {
+            return Err(String::from(
+                "Max custom command results must be at least 1.",
             ));
         }
 

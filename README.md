@@ -180,6 +180,8 @@ code <file>            switch to Files and search code-like files
 /files <file>          search file contents only
 clip <query>           search text clipboard history
 clipboard <query>      search text clipboard history
+cmd <query>            search configured custom commands
+<alias> <query>        run a configured custom command alias
 2 + 2                  calculate with Numbat
 =30 km/h -> mph        calculate or convert units with Numbat
 calc 5 ft + 2 in -> cm calculate explicitly with Numbat
@@ -199,6 +201,38 @@ forms such as `/g <query>` also work, but bare prefixes are the default style.
 Calculator results use [`numbat`](https://github.com/sharkdp/numbat). Expression-like
 input is detected automatically; set `calculator_requires_prefix` to `true` if
 you only want calculations for input starting with `=` or `calc`.
+
+Custom commands are loaded from:
+
+```text
+~/.deeplens/commands.json
+```
+
+The file is a JSON array:
+
+```json
+[
+  {
+    "name": "Open project",
+    "alias": "project",
+    "command": "code",
+    "args_template": "~/path/to/project",
+    "working_dir": "~",
+    "open_in_terminal": false
+  },
+  {
+    "name": "Run script",
+    "alias": "run",
+    "command": "./script.sh",
+    "args_template": "{query}",
+    "working_dir": "~/path/to/project",
+    "open_in_terminal": true
+  }
+]
+```
+
+Use `cmd <query>` to search commands, or type an alias directly. The
+`{query}` placeholder receives the text after the alias.
 
 ## Shortcuts
 
@@ -238,7 +272,8 @@ Settings are grouped into:
 
 - `General`: result limits, debounce, minimum query length, window sizes,
   result row height, terminal app, excluded folders, broad-search limits,
-  web search shortcuts, recents/history ranking, and pins
+  web search shortcuts, recents/history ranking, pins, clipboard history, and
+  custom commands
 - `Style`: colors for the palette, text, chips, selected rows, and highlights
 - `Shortcuts`: global and in-app shortcuts
 
@@ -269,6 +304,12 @@ Text clipboard history is stored separately at:
 Clipboard history is local-only. It is enabled by default, ignores empty and
 oversized text, deduplicates repeated copies, and can be disabled with
 `clipboard_history_enabled`.
+
+Custom commands are stored separately at:
+
+```text
+~/.deeplens/commands.json
+```
 
 You can also update individual settings from the search box:
 
@@ -434,7 +475,7 @@ in daily use.
   directly from the search box.
 - [x] **Web search shortcuts**: open configured searches such as Google, GitHub,
   YouTube, or documentation with a short prefix.
-- [ ] **Custom commands**: run user-defined commands or scripts with arguments.
+- [x] **Custom commands**: run user-defined commands or scripts with arguments.
 
 ### Later
 

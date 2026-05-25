@@ -20,6 +20,8 @@ pub enum SettingsField {
     MaxClipboardItems,
     MaxClipboardTextBytes,
     ClipboardPollMs,
+    CustomCommandsEnabled,
+    MaxCustomCommandResults,
     PreviewEnabled,
     ActionsEnabled,
     SearchDebounceMs,
@@ -79,6 +81,8 @@ impl SettingsField {
             SettingsField::MaxClipboardItems => "max_clipboard_items",
             SettingsField::MaxClipboardTextBytes => "max_clipboard_text_bytes",
             SettingsField::ClipboardPollMs => "clipboard_poll_ms",
+            SettingsField::CustomCommandsEnabled => "custom_commands_enabled",
+            SettingsField::MaxCustomCommandResults => "max_custom_command_results",
             SettingsField::PreviewEnabled => "preview_enabled",
             SettingsField::ActionsEnabled => "actions_enabled",
             SettingsField::SearchDebounceMs => "search_debounce_ms",
@@ -154,6 +158,12 @@ impl SettingsField {
                 Some(Self::MaxClipboardTextBytes)
             }
             "clipboardpollms" | "clippoll" | "clipboardpoll" => Some(Self::ClipboardPollMs),
+            "customcommandsenabled" | "customcommands" | "commands" | "cmds" => {
+                Some(Self::CustomCommandsEnabled)
+            }
+            "maxcustomcommandresults" | "maxcommands" | "commandresults" => {
+                Some(Self::MaxCustomCommandResults)
+            }
             "previewenabled" | "preview" | "quicklook" => Some(Self::PreviewEnabled),
             "actionsenabled" | "actions" | "actionsmenu" => Some(Self::ActionsEnabled),
             "searchdebouncems" | "debouncems" | "debounce" => Some(Self::SearchDebounceMs),
@@ -301,6 +311,8 @@ pub(super) fn update_settings_form_value(
         SettingsField::MaxClipboardItems => form.max_clipboard_items = value,
         SettingsField::MaxClipboardTextBytes => form.max_clipboard_text_bytes = value,
         SettingsField::ClipboardPollMs => form.clipboard_poll_ms = value,
+        SettingsField::CustomCommandsEnabled => form.custom_commands_enabled = value,
+        SettingsField::MaxCustomCommandResults => form.max_custom_command_results = value,
         SettingsField::PreviewEnabled => form.preview_enabled = value,
         SettingsField::ActionsEnabled => form.actions_enabled = value,
         SettingsField::SearchDebounceMs => form.search_debounce_ms = value,
@@ -366,6 +378,8 @@ const SETTINGS_COMMAND_NAMES: &[&str] = &[
     "max_clipboard_items",
     "max_clipboard_text_bytes",
     "clipboard_poll_ms",
+    "custom_commands_enabled",
+    "max_custom_command_results",
     "preview_enabled",
     "actions_enabled",
     "search_debounce_ms",
@@ -538,6 +552,22 @@ mod tests {
             Some(SetCommand::Ready {
                 field: SettingsField::MaxClipboardItems,
                 value: String::from("50"),
+            })
+        );
+
+        assert_eq!(
+            parse_set_command("/set commands off"),
+            Some(SetCommand::Ready {
+                field: SettingsField::CustomCommandsEnabled,
+                value: String::from("off"),
+            })
+        );
+
+        assert_eq!(
+            parse_set_command("/set max-commands 20"),
+            Some(SetCommand::Ready {
+                field: SettingsField::MaxCustomCommandResults,
+                value: String::from("20"),
             })
         );
     }

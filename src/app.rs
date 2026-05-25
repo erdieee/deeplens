@@ -12,6 +12,7 @@ use crate::app::system_actions::{
 };
 use crate::calculator;
 use crate::clipboard_history::{parse_clipboard_query, read_system_clipboard, ClipboardHistory};
+use crate::custom_commands::{parse_command_query, run_command, CommandBook, ResolvedCommand};
 use crate::history::SearchHistory;
 use crate::pins::Pins;
 use crate::query::{self, ParsedQuery};
@@ -226,6 +227,8 @@ pub enum ResultAction {
     OpenTerminal,
     CopyResult,
     DeleteClipboard,
+    RunCommand,
+    CopyCommand,
     Pin,
     Unpin,
 }
@@ -241,6 +244,8 @@ impl ResultAction {
             Self::OpenTerminal => "Open Terminal Here",
             Self::CopyResult => "Copy Result",
             Self::DeleteClipboard => "Delete from History",
+            Self::RunCommand => "Run",
+            Self::CopyCommand => "Copy Command",
             Self::Pin => "Pin",
             Self::Unpin => "Unpin",
         }
@@ -307,6 +312,7 @@ pub struct DeeplensApp {
     pins: Pins,
     clipboard_history: ClipboardHistory,
     last_clipboard_poll: Option<Instant>,
+    custom_commands: CommandBook,
     actions_open: bool,
     selected_action: usize,
     mode_picker_open: bool,
@@ -320,6 +326,7 @@ impl DeeplensApp {
         let history = SearchHistory::load();
         let pins = Pins::load();
         let clipboard_history = ClipboardHistory::load();
+        let custom_commands = CommandBook::load();
         let (main_window_id, open_main_window) = window::open(main_window_settings(&settings));
 
         (
@@ -360,6 +367,7 @@ impl DeeplensApp {
                 pins,
                 clipboard_history,
                 last_clipboard_poll: None,
+                custom_commands,
                 actions_open: false,
                 selected_action: 0,
                 mode_picker_open: false,
@@ -1042,6 +1050,18 @@ impl DeeplensApp {
                 SettingsField::ClipboardPollMs,
             ),
             settings_field(
+                "Custom commands",
+                &self.settings_form.custom_commands_enabled,
+                "Enables commands from ~/.deeplens/commands.json.",
+                SettingsField::CustomCommandsEnabled,
+            ),
+            settings_field(
+                "Max command results",
+                &self.settings_form.max_custom_command_results,
+                "Maximum number of custom commands shown for cmd searches.",
+                SettingsField::MaxCustomCommandResults,
+            ),
+            settings_field(
                 "Preview enabled",
                 &self.settings_form.preview_enabled,
                 "Uses macOS Quick Look to preview the selected result.",
@@ -1403,11 +1423,38 @@ impl DeeplensApp {
             self.stop_search();
             self.show_clipboard_results(&query);
             Task::none()
+        } else if let Some(query) = parse_command_query(&self.query) {
+            self.pending_search = false;
+            self.stop_search();
+            self.show_command_results(&query);
+            Task::none()
+        } else if self.commit_direct_command() {
+            Task::none()
         } else {
             self.pending_search = false;
             self.start_search();
             Task::none()
         }
+    }
+
+    fn commit_direct_command(&mut self) -> bool {
+        if !self.direct_command_is_allowed() {
+            return false;
+        }
+
+        self.custom_commands = CommandBook::load();
+        let Some(command) = self
+            .custom_commands
+            .direct_match(&self.query, &self.settings)
+        else {
+            return false;
+        };
+
+        self.pending_search = false;
+        self.stop_search();
+        self.calculating = false;
+        self.show_resolved_command(command);
+        true
     }
 
     fn commit_mode_query(&mut self) -> bool {
@@ -1683,6 +1730,42 @@ impl DeeplensApp {
         };
     }
 
+    fn show_command_results(&mut self, query: &str) {
+        self.custom_commands = CommandBook::load();
+        self.clear_results();
+        self.last_search_query = self.query.trim().to_owned();
+        self.active_search_text = query.trim().to_owned();
+        self.active_exact_phrase = None;
+
+        let commands = self.custom_commands.search(query, &self.settings);
+        self.result_count = commands.len();
+        self.results = commands
+            .into_iter()
+            .enumerate()
+            .map(|(index, command)| command_result(command, index))
+            .collect();
+
+        let _ = self.select_first_visible();
+        self.status = if !self.settings.custom_commands_enabled {
+            String::from("Custom commands disabled")
+        } else if self.results.is_empty() {
+            String::from("No command results")
+        } else {
+            format!("{} command results", self.results.len())
+        };
+    }
+
+    fn show_resolved_command(&mut self, command: ResolvedCommand) {
+        self.clear_results();
+        self.last_search_query = self.query.trim().to_owned();
+        self.active_search_text = command.alias.clone();
+        self.active_exact_phrase = None;
+        self.result_count = 1;
+        self.results.push(command_result(command, 0));
+        let _ = self.select_first_visible();
+        self.status = String::from("Press Enter to run command");
+    }
+
     fn schedule_search(&mut self) {
         self.last_query_change = Some(Instant::now());
 
@@ -1711,6 +1794,27 @@ impl DeeplensApp {
             self.calculating = false;
             self.show_clipboard_results(&query);
             return;
+        }
+
+        if let Some(query) = parse_command_query(&self.query) {
+            self.pending_search = false;
+            self.stop_search();
+            self.calculating = false;
+            self.show_command_results(&query);
+            return;
+        }
+
+        if self.direct_command_is_allowed() {
+            if let Some(command) = self
+                .custom_commands
+                .direct_match(&self.query, &self.settings)
+            {
+                self.pending_search = false;
+                self.stop_search();
+                self.calculating = false;
+                self.show_resolved_command(command);
+                return;
+            }
         }
 
         if calculator::parse_calculation(&self.query, &self.settings).is_some() {
@@ -2054,6 +2158,8 @@ impl DeeplensApp {
                 self.delete_selected_clipboard_entry();
                 Task::none()
             }
+            ResultAction::RunCommand => self.open_selected(),
+            ResultAction::CopyCommand => self.copy_selected_result(),
             ResultAction::Pin => {
                 self.pin_selected();
                 Task::none()
@@ -2108,6 +2214,25 @@ impl DeeplensApp {
             };
         }
 
+        if result.kind == SearchResultKind::CustomCommand {
+            let Some(command) = self.resolve_command_result(result) else {
+                self.status = String::from("Command unavailable");
+                return Task::none();
+            };
+
+            if let Err(error) = run_command(&command, &self.settings) {
+                self.status = format!("Failed to run command: {error}");
+                return Task::none();
+            }
+
+            self.status = String::from("Command started");
+            return if hide_after_open {
+                self.hide_window()
+            } else {
+                Task::none()
+            };
+        }
+
         let path = result.path.clone();
         let kind = result.kind;
 
@@ -2144,6 +2269,7 @@ impl DeeplensApp {
             .is_some_and(|result| {
                 result.kind == SearchResultKind::Calculator
                     || result.kind == SearchResultKind::Clipboard
+                    || result.kind == SearchResultKind::CustomCommand
             })
         {
             self.status = String::from("Reveal unavailable");
@@ -2175,7 +2301,9 @@ impl DeeplensApp {
             return;
         };
 
-        if result.kind == SearchResultKind::Calculator || result.kind == SearchResultKind::Clipboard
+        if result.kind == SearchResultKind::Calculator
+            || result.kind == SearchResultKind::Clipboard
+            || result.kind == SearchResultKind::CustomCommand
         {
             self.status = String::from("Preview unavailable");
             return;
@@ -2197,6 +2325,7 @@ impl DeeplensApp {
             .filter(|result| {
                 result.kind == SearchResultKind::Clipboard
                     || result.kind == SearchResultKind::Calculator
+                    || result.kind == SearchResultKind::CustomCommand
             })
         {
             self.status = String::from("Result copied");
@@ -2267,7 +2396,10 @@ impl DeeplensApp {
             return;
         };
 
-        if result.kind == SearchResultKind::Calculator {
+        if result.kind == SearchResultKind::Calculator
+            || result.kind == SearchResultKind::Clipboard
+            || result.kind == SearchResultKind::CustomCommand
+        {
             self.status = String::from("Pin unavailable");
             return;
         }
@@ -2374,6 +2506,10 @@ impl DeeplensApp {
             return vec![ResultAction::CopyResult, ResultAction::DeleteClipboard];
         }
 
+        if result.kind == SearchResultKind::CustomCommand {
+            return vec![ResultAction::RunCommand, ResultAction::CopyCommand];
+        }
+
         let mut actions = vec![
             ResultAction::Open,
             ResultAction::Preview,
@@ -2404,6 +2540,7 @@ impl DeeplensApp {
             .is_some_and(|result| {
                 result.kind == SearchResultKind::Calculator
                     || result.kind == SearchResultKind::Clipboard
+                    || result.kind == SearchResultKind::CustomCommand
             })
         {
             self.status = String::from("Terminal unavailable");
@@ -2428,6 +2565,18 @@ impl DeeplensApp {
             .and_then(|index| self.results.get(index))
             .map(|result| result.path.clone())
             .or_else(|| self.selected_result_path.clone())
+    }
+
+    fn resolve_command_result(&self, result: &GroupedSearchResult) -> Option<ResolvedCommand> {
+        let id = custom_command_result_id(&result.path)?;
+
+        if parse_command_query(&self.query).is_some() {
+            return self.custom_commands.resolve_by_id(&id, "");
+        }
+
+        self.custom_commands
+            .direct_match(&self.query, &self.settings)
+            .or_else(|| self.custom_commands.resolve_by_id(&id, ""))
     }
 
     fn ghost_completion(&self) -> Option<String> {
@@ -2461,7 +2610,9 @@ impl DeeplensApp {
 
                 path_completion_target(&relative_path, query)
             }
-            SearchResultKind::Calculator | SearchResultKind::Clipboard => None,
+            SearchResultKind::Calculator
+            | SearchResultKind::Clipboard
+            | SearchResultKind::CustomCommand => None,
         }
     }
 
@@ -2666,6 +2817,18 @@ impl DeeplensApp {
 
     fn parsed_query(&self) -> ParsedQuery {
         query::parse_query(&self.query)
+    }
+
+    fn direct_command_is_allowed(&self) -> bool {
+        if self.query.trim_start().starts_with('/') {
+            return false;
+        }
+
+        let parsed = self.parsed_query();
+        parsed.filter.is_none()
+            && parsed.mode.is_none()
+            && parsed.scope.is_none()
+            && parsed.scope_error.is_none()
     }
 
     fn apply_query_hints(&mut self, parsed: &ParsedQuery) {
@@ -2922,6 +3085,10 @@ impl DeeplensApp {
             || self.status == "Clipboard item deleted"
             || self.status == "Clipboard item not found"
             || self.status == "No clipboard results"
+            || self.status == "Command started"
+            || self.status == "Command unavailable"
+            || self.status == "Custom commands disabled"
+            || self.status == "No command results"
             || self.status == "Actions"
             || self.status == "Actions disabled"
             || self.status == "Filename copied"
@@ -2946,10 +3113,12 @@ impl DeeplensApp {
             || self.status.contains(" found in ")
             || self.status.ends_with(" clipboard items")
             || self.status.ends_with(" clipboard matches")
+            || self.status.ends_with(" command results")
             || self.status.starts_with("Scope set to ")
             || self.status.starts_with("Mode set to ")
             || self.status.starts_with("Settings saved to ")
-            || self.status.starts_with("Press Enter to use "))
+            || self.status.starts_with("Press Enter to use ")
+            || self.status == "Press Enter to run command")
     }
 
     fn rga_is_missing(&self) -> bool {
@@ -3217,6 +3386,12 @@ fn file_icon(
             .into();
     }
 
+    if result_kind == SearchResultKind::CustomCommand {
+        return container(text(">").size(16).color(ACCENT))
+            .width(Length::Fixed(18.0))
+            .into();
+    }
+
     let kind = ResultKind::from_result(result_kind, path);
 
     container(text(kind.symbol()).size(16))
@@ -3231,6 +3406,10 @@ fn result_path_label(result: &GroupedSearchResult) -> String {
 
     if result.kind == SearchResultKind::Clipboard {
         return String::from("Clipboard history");
+    }
+
+    if result.kind == SearchResultKind::CustomCommand {
+        return String::from("Custom command");
     }
 
     let path = compact_path(&result.path);
@@ -3251,6 +3430,7 @@ enum ResultKind {
     Code,
     Calculator,
     Clipboard,
+    CustomCommand,
     File,
 }
 
@@ -3270,6 +3450,10 @@ impl ResultKind {
 
         if result_kind == SearchResultKind::Clipboard {
             return Self::Clipboard;
+        }
+
+        if result_kind == SearchResultKind::CustomCommand {
+            return Self::CustomCommand;
         }
 
         match path
@@ -3294,9 +3478,31 @@ impl ResultKind {
             Self::App => "□",
             Self::Calculator => "=",
             Self::Clipboard => "⧉",
+            Self::CustomCommand => ">",
             Self::Pdf | Self::Doc | Self::Text | Self::Code | Self::File => "📄",
         }
     }
+}
+
+fn command_result(command: ResolvedCommand, index: usize) -> GroupedSearchResult {
+    GroupedSearchResult {
+        title: Some(format!("{} ({})", command.name, command.alias)),
+        path: PathBuf::from(format!("custom-command:{}", command.id)),
+        line_number: None,
+        snippet: command.command_line,
+        match_count: 1,
+        score: 2_000_i64.saturating_sub(index as i64),
+        kind: SearchResultKind::CustomCommand,
+        icon_path: None,
+        pinned: false,
+    }
+}
+
+fn custom_command_result_id(path: &Path) -> Option<String> {
+    path.to_string_lossy()
+        .strip_prefix("custom-command:")
+        .filter(|id| !id.is_empty())
+        .map(ToOwned::to_owned)
 }
 
 fn clipboard_title(text: &str) -> String {

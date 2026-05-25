@@ -30,6 +30,7 @@ pub enum SearchResultKind {
     Application,
     Calculator,
     Clipboard,
+    CustomCommand,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
