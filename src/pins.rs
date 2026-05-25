@@ -110,6 +110,7 @@ fn pin_kind(kind: SearchResultKind) -> &'static str {
         SearchResultKind::FolderName => "folder",
         SearchResultKind::Application => "app",
         SearchResultKind::Calculator => "calculator",
+        SearchResultKind::Clipboard => "clipboard",
     }
 }
 

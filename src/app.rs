@@ -11,6 +11,7 @@ use crate::app::system_actions::{
     open_terminal_at, preview_with_quick_look, reveal_in_file_manager, terminal_directory_for,
 };
 use crate::calculator;
+use crate::clipboard_history::{parse_clipboard_query, read_system_clipboard, ClipboardHistory};
 use crate::history::SearchHistory;
 use crate::pins::Pins;
 use crate::query::{self, ParsedQuery};
@@ -224,6 +225,7 @@ pub enum ResultAction {
     CopyFilename,
     OpenTerminal,
     CopyResult,
+    DeleteClipboard,
     Pin,
     Unpin,
 }
@@ -238,6 +240,7 @@ impl ResultAction {
             Self::CopyFilename => "Copy Filename",
             Self::OpenTerminal => "Open Terminal Here",
             Self::CopyResult => "Copy Result",
+            Self::DeleteClipboard => "Delete from History",
             Self::Pin => "Pin",
             Self::Unpin => "Unpin",
         }
@@ -302,6 +305,8 @@ pub struct DeeplensApp {
     settings_tab: SettingsTab,
     history: SearchHistory,
     pins: Pins,
+    clipboard_history: ClipboardHistory,
+    last_clipboard_poll: Option<Instant>,
     actions_open: bool,
     selected_action: usize,
     mode_picker_open: bool,
@@ -314,6 +319,7 @@ impl DeeplensApp {
         let idle_height = settings.idle_height;
         let history = SearchHistory::load();
         let pins = Pins::load();
+        let clipboard_history = ClipboardHistory::load();
         let (main_window_id, open_main_window) = window::open(main_window_settings(&settings));
 
         (
@@ -352,6 +358,8 @@ impl DeeplensApp {
                 settings_tab: SettingsTab::General,
                 history,
                 pins,
+                clipboard_history,
+                last_clipboard_poll: None,
                 actions_open: false,
                 selected_action: 0,
                 mode_picker_open: false,
@@ -427,6 +435,7 @@ impl DeeplensApp {
                     task = self.toggle_visibility();
                 }
 
+                self.poll_clipboard_history();
                 self.drain_search_events();
                 task = Task::batch([task, self.run_pending_search()]);
             }
@@ -1009,6 +1018,30 @@ impl DeeplensApp {
                 SettingsField::CalculatorCommand,
             ),
             settings_field(
+                "Clipboard history",
+                &self.settings_form.clipboard_history_enabled,
+                "Stores copied text locally and makes it searchable with clip.",
+                SettingsField::ClipboardHistoryEnabled,
+            ),
+            settings_field(
+                "Max clipboard items",
+                &self.settings_form.max_clipboard_items,
+                "Maximum number of text clipboard entries stored.",
+                SettingsField::MaxClipboardItems,
+            ),
+            settings_field(
+                "Max clipboard text bytes",
+                &self.settings_form.max_clipboard_text_bytes,
+                "Ignores clipboard text larger than this many bytes.",
+                SettingsField::MaxClipboardTextBytes,
+            ),
+            settings_field(
+                "Clipboard poll ms",
+                &self.settings_form.clipboard_poll_ms,
+                "How often DeepLens checks the system clipboard.",
+                SettingsField::ClipboardPollMs,
+            ),
+            settings_field(
                 "Preview enabled",
                 &self.settings_form.preview_enabled,
                 "Uses macOS Quick Look to preview the selected result.",
@@ -1365,6 +1398,11 @@ impl DeeplensApp {
 
         if self.should_open_selected() {
             self.open_selected()
+        } else if let Some(query) = parse_clipboard_query(&self.query) {
+            self.pending_search = false;
+            self.stop_search();
+            self.show_clipboard_results(&query);
+            Task::none()
         } else {
             self.pending_search = false;
             self.start_search();
@@ -1589,6 +1627,62 @@ impl DeeplensApp {
         }
     }
 
+    fn poll_clipboard_history(&mut self) {
+        if !self.settings.clipboard_history_enabled {
+            return;
+        }
+
+        let now = Instant::now();
+        if self.last_clipboard_poll.is_some_and(|last_poll| {
+            now.duration_since(last_poll) < Duration::from_millis(self.settings.clipboard_poll_ms)
+        }) {
+            return;
+        }
+        self.last_clipboard_poll = Some(now);
+
+        let Ok(Some(text)) = read_system_clipboard() else {
+            return;
+        };
+
+        let _ = self.clipboard_history.record_text(&text, &self.settings);
+    }
+
+    fn show_clipboard_results(&mut self, query: &str) {
+        self.clear_results();
+        self.last_search_query = self.query.trim().to_owned();
+        self.active_search_text = query.trim().to_owned();
+        self.active_exact_phrase = None;
+
+        let entries = self.clipboard_history.search(query, &self.settings);
+        self.result_count = entries.len();
+        self.results = entries
+            .into_iter()
+            .enumerate()
+            .map(|(index, entry)| GroupedSearchResult {
+                title: Some(clipboard_title(&entry.text)),
+                path: PathBuf::from(format!("clipboard:{}", entry.id)),
+                line_number: None,
+                snippet: entry.text,
+                match_count: 1,
+                score: 2_000_i64.saturating_sub(index as i64),
+                kind: SearchResultKind::Clipboard,
+                icon_path: None,
+                pinned: false,
+            })
+            .collect();
+
+        let _ = self.select_first_visible();
+        self.status = if !self.settings.clipboard_history_enabled {
+            String::from("Clipboard history disabled")
+        } else if self.results.is_empty() {
+            String::from("No clipboard results")
+        } else if query.trim().is_empty() {
+            format!("{} clipboard items", self.results.len())
+        } else {
+            format!("{} clipboard matches", self.results.len())
+        };
+    }
+
     fn schedule_search(&mut self) {
         self.last_query_change = Some(Instant::now());
 
@@ -1608,6 +1702,14 @@ impl DeeplensApp {
             self.calculating = false;
             self.clear_results();
             self.status = status;
+            return;
+        }
+
+        if let Some(query) = parse_clipboard_query(&self.query) {
+            self.pending_search = false;
+            self.stop_search();
+            self.calculating = false;
+            self.show_clipboard_results(&query);
             return;
         }
 
@@ -1948,6 +2050,10 @@ impl DeeplensApp {
                 Task::none()
             }
             ResultAction::CopyResult => self.copy_selected_result(),
+            ResultAction::DeleteClipboard => {
+                self.delete_selected_clipboard_entry();
+                Task::none()
+            }
             ResultAction::Pin => {
                 self.pin_selected();
                 Task::none()
@@ -1991,6 +2097,17 @@ impl DeeplensApp {
             };
         }
 
+        if result.kind == SearchResultKind::Clipboard {
+            let value = result.snippet.clone();
+            self.status = String::from("Clipboard copied");
+            let copy = clipboard::write(value);
+            return if hide_after_open {
+                Task::batch([copy, self.hide_window()])
+            } else {
+                copy
+            };
+        }
+
         let path = result.path.clone();
         let kind = result.kind;
 
@@ -2021,6 +2138,18 @@ impl DeeplensApp {
     }
 
     fn reveal_selected(&mut self) {
+        if self
+            .selected_result
+            .and_then(|index| self.results.get(index))
+            .is_some_and(|result| {
+                result.kind == SearchResultKind::Calculator
+                    || result.kind == SearchResultKind::Clipboard
+            })
+        {
+            self.status = String::from("Reveal unavailable");
+            return;
+        }
+
         let Some(path) = self.selected_path() else {
             return;
         };
@@ -2046,7 +2175,8 @@ impl DeeplensApp {
             return;
         };
 
-        if result.kind == SearchResultKind::Calculator {
+        if result.kind == SearchResultKind::Calculator || result.kind == SearchResultKind::Clipboard
+        {
             self.status = String::from("Preview unavailable");
             return;
         }
@@ -2059,7 +2189,19 @@ impl DeeplensApp {
     }
 
     fn copy_selected_path(&mut self) -> Task<Message> {
-        if let Some(path) = self.selected_path() {
+        self.reconcile_selected_result();
+
+        if let Some(result) = self
+            .selected_result
+            .and_then(|index| self.results.get(index))
+            .filter(|result| {
+                result.kind == SearchResultKind::Clipboard
+                    || result.kind == SearchResultKind::Calculator
+            })
+        {
+            self.status = String::from("Result copied");
+            clipboard::write(result.snippet.clone())
+        } else if let Some(path) = self.selected_path() {
             self.status = String::from("Path copied");
             clipboard::write(path.to_string_lossy().to_string())
         } else {
@@ -2182,6 +2324,39 @@ impl DeeplensApp {
         }
     }
 
+    fn delete_selected_clipboard_entry(&mut self) {
+        self.reconcile_selected_result();
+
+        let Some(index) = self.selected_result else {
+            return;
+        };
+
+        let Some(result) = self.results.get(index) else {
+            return;
+        };
+
+        if result.kind != SearchResultKind::Clipboard {
+            return;
+        }
+
+        let Some(id) = clipboard_result_id(&result.path) else {
+            return;
+        };
+
+        match self.clipboard_history.delete(&id) {
+            Ok(true) => {
+                self.results.remove(index);
+                self.result_count = self.results.len();
+                self.selected_result = None;
+                self.selected_result_path = None;
+                let _ = self.select_first_visible();
+                self.status = String::from("Clipboard item deleted");
+            }
+            Ok(false) => self.status = String::from("Clipboard item not found"),
+            Err(error) => self.status = format_error_status(error),
+        }
+    }
+
     fn available_actions(&self) -> Vec<ResultAction> {
         let Some(index) = self.selected_result else {
             return Vec::new();
@@ -2193,6 +2368,10 @@ impl DeeplensApp {
 
         if result.kind == SearchResultKind::Calculator {
             return vec![ResultAction::CopyResult];
+        }
+
+        if result.kind == SearchResultKind::Clipboard {
+            return vec![ResultAction::CopyResult, ResultAction::DeleteClipboard];
         }
 
         let mut actions = vec![
@@ -2219,6 +2398,18 @@ impl DeeplensApp {
     }
 
     fn open_selected_in_terminal(&mut self) {
+        if self
+            .selected_result
+            .and_then(|index| self.results.get(index))
+            .is_some_and(|result| {
+                result.kind == SearchResultKind::Calculator
+                    || result.kind == SearchResultKind::Clipboard
+            })
+        {
+            self.status = String::from("Terminal unavailable");
+            return;
+        }
+
         let Some(path) = self.selected_path() else {
             return;
         };
@@ -2270,7 +2461,7 @@ impl DeeplensApp {
 
                 path_completion_target(&relative_path, query)
             }
-            SearchResultKind::Calculator => None,
+            SearchResultKind::Calculator | SearchResultKind::Clipboard => None,
         }
     }
 
@@ -2305,8 +2496,11 @@ impl DeeplensApp {
                 self.settings = settings;
                 self.history.trim(self.settings.max_history_items);
                 self.pins.trim(self.settings.max_pinned_items);
+                self.clipboard_history
+                    .trim(self.settings.max_clipboard_items);
                 let history_error = self.history.save().err();
                 let pins_error = self.pins.save().err();
+                let clipboard_error = self.clipboard_history.save().err();
                 let shortcut_error = self.reload_global_shortcut().err();
                 self.status = match settings::save(&self.settings) {
                     Ok(path) => format!("Settings saved to {}", path.display()),
@@ -2316,6 +2510,9 @@ impl DeeplensApp {
                     self.status = format_error_status(error);
                 }
                 if let Some(error) = pins_error {
+                    self.status = format_error_status(error);
+                }
+                if let Some(error) = clipboard_error {
                     self.status = format_error_status(error);
                 }
                 if let Some(error) = shortcut_error {
@@ -2355,8 +2552,11 @@ impl DeeplensApp {
                 self.settings_form = SettingsForm::from(&self.settings);
                 self.history.trim(self.settings.max_history_items);
                 self.pins.trim(self.settings.max_pinned_items);
+                self.clipboard_history
+                    .trim(self.settings.max_clipboard_items);
                 let history_error = self.history.save().err();
                 let pins_error = self.pins.save().err();
+                let clipboard_error = self.clipboard_history.save().err();
                 let shortcut_error = self.reload_global_shortcut().err();
                 self.query.clear();
                 self.pending_search = false;
@@ -2374,6 +2574,9 @@ impl DeeplensApp {
                     self.status = format_error_status(error);
                 }
                 if let Some(error) = pins_error {
+                    self.status = format_error_status(error);
+                }
+                if let Some(error) = clipboard_error {
                     self.status = format_error_status(error);
                 }
 
@@ -2714,6 +2917,11 @@ impl DeeplensApp {
             || self.status == "Calculating…"
             || self.status == "Calculation result"
             || self.status == "Result copied"
+            || self.status == "Clipboard copied"
+            || self.status == "Clipboard history disabled"
+            || self.status == "Clipboard item deleted"
+            || self.status == "Clipboard item not found"
+            || self.status == "No clipboard results"
             || self.status == "Actions"
             || self.status == "Actions disabled"
             || self.status == "Filename copied"
@@ -2724,6 +2932,8 @@ impl DeeplensApp {
             || self.status == "Preview opened"
             || self.status == "Preview disabled"
             || self.status == "Preview unavailable"
+            || self.status == "Reveal unavailable"
+            || self.status == "Terminal unavailable"
             || self.status.starts_with("Searching ")
             || self.status == "Waiting…"
             || self.status == "Search cancelled"
@@ -2734,6 +2944,8 @@ impl DeeplensApp {
             || self.status.starts_with("Showing first ")
             || self.status == min_query_status(self.settings.min_query_chars)
             || self.status.contains(" found in ")
+            || self.status.ends_with(" clipboard items")
+            || self.status.ends_with(" clipboard matches")
             || self.status.starts_with("Scope set to ")
             || self.status.starts_with("Mode set to ")
             || self.status.starts_with("Settings saved to ")
@@ -2999,6 +3211,12 @@ fn file_icon(
             .into();
     }
 
+    if result_kind == SearchResultKind::Clipboard {
+        return container(text("⧉").size(16).color(ACCENT))
+            .width(Length::Fixed(18.0))
+            .into();
+    }
+
     let kind = ResultKind::from_result(result_kind, path);
 
     container(text(kind.symbol()).size(16))
@@ -3009,6 +3227,10 @@ fn file_icon(
 fn result_path_label(result: &GroupedSearchResult) -> String {
     if result.kind == SearchResultKind::Calculator {
         return String::from("Numbat");
+    }
+
+    if result.kind == SearchResultKind::Clipboard {
+        return String::from("Clipboard history");
     }
 
     let path = compact_path(&result.path);
@@ -3028,6 +3250,7 @@ enum ResultKind {
     Text,
     Code,
     Calculator,
+    Clipboard,
     File,
 }
 
@@ -3043,6 +3266,10 @@ impl ResultKind {
 
         if result_kind == SearchResultKind::Calculator {
             return Self::Calculator;
+        }
+
+        if result_kind == SearchResultKind::Clipboard {
+            return Self::Clipboard;
         }
 
         match path
@@ -3066,9 +3293,33 @@ impl ResultKind {
             Self::Folder => "📁",
             Self::App => "□",
             Self::Calculator => "=",
+            Self::Clipboard => "⧉",
             Self::Pdf | Self::Doc | Self::Text | Self::Code | Self::File => "📄",
         }
     }
+}
+
+fn clipboard_title(text: &str) -> String {
+    let title = text
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .map(str::trim)
+        .unwrap_or("Clipboard");
+
+    if title.chars().count() <= 80 {
+        return title.to_owned();
+    }
+
+    let mut shortened: String = title.chars().take(77).collect();
+    shortened.push_str("...");
+    shortened
+}
+
+fn clipboard_result_id(path: &Path) -> Option<String> {
+    path.to_string_lossy()
+        .strip_prefix("clipboard:")
+        .filter(|id| !id.is_empty())
+        .map(ToOwned::to_owned)
 }
 
 fn highlighted_snippet(snippet: &str, query: &str) -> Element<'static, Message> {

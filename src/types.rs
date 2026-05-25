@@ -29,6 +29,7 @@ pub enum SearchResultKind {
     FolderName,
     Application,
     Calculator,
+    Clipboard,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

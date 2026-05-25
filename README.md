@@ -178,6 +178,8 @@ code <file>            switch to Files and search code-like files
 /apps <file>           search installed macOS applications
 /folders <folder>      search folder names only
 /files <file>          search file contents only
+clip <query>           search text clipboard history
+clipboard <query>      search text clipboard history
 2 + 2                  calculate with Numbat
 =30 km/h -> mph        calculate or convert units with Numbat
 calc 5 ft + 2 in -> cm calculate explicitly with Numbat
@@ -257,6 +259,16 @@ Pinned results are stored separately at:
 ```text
 ~/.deeplens/pins.json
 ```
+
+Text clipboard history is stored separately at:
+
+```text
+~/.deeplens/clipboard.json
+```
+
+Clipboard history is local-only. It is enabled by default, ignores empty and
+oversized text, deduplicates repeated copies, and can be disabled with
+`clipboard_history_enabled`.
 
 You can also update individual settings from the search box:
 
@@ -417,7 +429,7 @@ in daily use.
   open, reveal, copy path, copy filename, open terminal here, and show info.
 - [x] **Cleaner mode controls**: replace extra chips with one simple search mode
   control and keep advanced filters in query syntax.
-- [ ] **Clipboard history**: search and paste recently copied text.
+- [x] **Clipboard history**: search and paste recently copied text.
 - [x] **Calculator and unit conversion**: evaluate quick math and conversions
   directly from the search box.
 - [x] **Web search shortcuts**: open configured searches such as Google, GitHub,

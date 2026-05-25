@@ -1,6 +1,7 @@
 mod app;
 mod app_search;
 mod calculator;
+mod clipboard_history;
 mod history;
 mod pins;
 mod query;

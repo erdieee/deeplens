@@ -22,6 +22,10 @@ pub struct AppSettings {
     pub calculator_enabled: bool,
     pub calculator_requires_prefix: bool,
     pub calculator_command: String,
+    pub clipboard_history_enabled: bool,
+    pub max_clipboard_items: usize,
+    pub max_clipboard_text_bytes: usize,
+    pub clipboard_poll_ms: u64,
     pub preview_enabled: bool,
     pub actions_enabled: bool,
     pub search_debounce_ms: u64,
@@ -77,6 +81,10 @@ impl Default for AppSettings {
             calculator_enabled: true,
             calculator_requires_prefix: false,
             calculator_command: String::from("numbat"),
+            clipboard_history_enabled: true,
+            max_clipboard_items: 200,
+            max_clipboard_text_bytes: 20_000,
+            clipboard_poll_ms: 1_000,
             preview_enabled: true,
             actions_enabled: true,
             search_debounce_ms: 650,
@@ -137,6 +145,10 @@ pub struct SettingsForm {
     pub calculator_enabled: String,
     pub calculator_requires_prefix: String,
     pub calculator_command: String,
+    pub clipboard_history_enabled: String,
+    pub max_clipboard_items: String,
+    pub max_clipboard_text_bytes: String,
+    pub clipboard_poll_ms: String,
     pub preview_enabled: String,
     pub actions_enabled: String,
     pub search_debounce_ms: String,
@@ -192,6 +204,10 @@ impl From<&AppSettings> for SettingsForm {
             calculator_enabled: settings.calculator_enabled.to_string(),
             calculator_requires_prefix: settings.calculator_requires_prefix.to_string(),
             calculator_command: settings.calculator_command.clone(),
+            clipboard_history_enabled: settings.clipboard_history_enabled.to_string(),
+            max_clipboard_items: settings.max_clipboard_items.to_string(),
+            max_clipboard_text_bytes: settings.max_clipboard_text_bytes.to_string(),
+            clipboard_poll_ms: settings.clipboard_poll_ms.to_string(),
             preview_enabled: settings.preview_enabled.to_string(),
             actions_enabled: settings.actions_enabled.to_string(),
             search_debounce_ms: settings.search_debounce_ms.to_string(),
@@ -267,6 +283,16 @@ impl SettingsForm {
                 &self.calculator_command,
                 "Calculator command",
             )?,
+            clipboard_history_enabled: parse_bool(
+                &self.clipboard_history_enabled,
+                "Clipboard history enabled",
+            )?,
+            max_clipboard_items: parse_usize(&self.max_clipboard_items, "Max clipboard items")?,
+            max_clipboard_text_bytes: parse_usize(
+                &self.max_clipboard_text_bytes,
+                "Max clipboard text bytes",
+            )?,
+            clipboard_poll_ms: parse_u64(&self.clipboard_poll_ms, "Clipboard poll interval")?,
             preview_enabled: parse_bool(&self.preview_enabled, "Preview enabled")?,
             actions_enabled: parse_bool(&self.actions_enabled, "Actions enabled")?,
             search_debounce_ms: parse_u64(&self.search_debounce_ms, "Debounce")?,
@@ -336,6 +362,20 @@ impl SettingsForm {
 
         if settings.max_pinned_items == 0 {
             return Err(String::from("Max pinned items must be at least 1."));
+        }
+
+        if settings.max_clipboard_items == 0 {
+            return Err(String::from("Max clipboard items must be at least 1."));
+        }
+
+        if settings.max_clipboard_text_bytes == 0 {
+            return Err(String::from("Max clipboard text bytes must be at least 1."));
+        }
+
+        if settings.clipboard_poll_ms == 0 {
+            return Err(String::from(
+                "Clipboard poll interval must be at least 1 ms.",
+            ));
         }
 
         if settings.min_query_chars == 0 {

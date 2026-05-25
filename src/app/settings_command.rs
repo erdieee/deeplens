@@ -16,6 +16,10 @@ pub enum SettingsField {
     CalculatorEnabled,
     CalculatorRequiresPrefix,
     CalculatorCommand,
+    ClipboardHistoryEnabled,
+    MaxClipboardItems,
+    MaxClipboardTextBytes,
+    ClipboardPollMs,
     PreviewEnabled,
     ActionsEnabled,
     SearchDebounceMs,
@@ -71,6 +75,10 @@ impl SettingsField {
             SettingsField::CalculatorEnabled => "calculator_enabled",
             SettingsField::CalculatorRequiresPrefix => "calculator_requires_prefix",
             SettingsField::CalculatorCommand => "calculator_command",
+            SettingsField::ClipboardHistoryEnabled => "clipboard_history_enabled",
+            SettingsField::MaxClipboardItems => "max_clipboard_items",
+            SettingsField::MaxClipboardTextBytes => "max_clipboard_text_bytes",
+            SettingsField::ClipboardPollMs => "clipboard_poll_ms",
             SettingsField::PreviewEnabled => "preview_enabled",
             SettingsField::ActionsEnabled => "actions_enabled",
             SettingsField::SearchDebounceMs => "search_debounce_ms",
@@ -138,6 +146,14 @@ impl SettingsField {
                 Some(Self::CalculatorRequiresPrefix)
             }
             "calculatorcommand" | "calccommand" | "numbatcommand" => Some(Self::CalculatorCommand),
+            "clipboardhistoryenabled" | "clipboardhistory" | "clipboard" | "clips" => {
+                Some(Self::ClipboardHistoryEnabled)
+            }
+            "maxclipboarditems" | "clipboarditems" | "maxclips" => Some(Self::MaxClipboardItems),
+            "maxclipboardtextbytes" | "clipboardtextbytes" | "maxclipbytes" => {
+                Some(Self::MaxClipboardTextBytes)
+            }
+            "clipboardpollms" | "clippoll" | "clipboardpoll" => Some(Self::ClipboardPollMs),
             "previewenabled" | "preview" | "quicklook" => Some(Self::PreviewEnabled),
             "actionsenabled" | "actions" | "actionsmenu" => Some(Self::ActionsEnabled),
             "searchdebouncems" | "debouncems" | "debounce" => Some(Self::SearchDebounceMs),
@@ -281,6 +297,10 @@ pub(super) fn update_settings_form_value(
         SettingsField::CalculatorEnabled => form.calculator_enabled = value,
         SettingsField::CalculatorRequiresPrefix => form.calculator_requires_prefix = value,
         SettingsField::CalculatorCommand => form.calculator_command = value,
+        SettingsField::ClipboardHistoryEnabled => form.clipboard_history_enabled = value,
+        SettingsField::MaxClipboardItems => form.max_clipboard_items = value,
+        SettingsField::MaxClipboardTextBytes => form.max_clipboard_text_bytes = value,
+        SettingsField::ClipboardPollMs => form.clipboard_poll_ms = value,
         SettingsField::PreviewEnabled => form.preview_enabled = value,
         SettingsField::ActionsEnabled => form.actions_enabled = value,
         SettingsField::SearchDebounceMs => form.search_debounce_ms = value,
@@ -342,6 +362,10 @@ const SETTINGS_COMMAND_NAMES: &[&str] = &[
     "calculator_enabled",
     "calculator_requires_prefix",
     "calculator_command",
+    "clipboard_history_enabled",
+    "max_clipboard_items",
+    "max_clipboard_text_bytes",
+    "clipboard_poll_ms",
     "preview_enabled",
     "actions_enabled",
     "search_debounce_ms",
@@ -498,6 +522,22 @@ mod tests {
             Some(SetCommand::Ready {
                 field: SettingsField::PinRankBoost,
                 value: String::from("2000"),
+            })
+        );
+
+        assert_eq!(
+            parse_set_command("/set clipboard off"),
+            Some(SetCommand::Ready {
+                field: SettingsField::ClipboardHistoryEnabled,
+                value: String::from("off"),
+            })
+        );
+
+        assert_eq!(
+            parse_set_command("/set max-clips 50"),
+            Some(SetCommand::Ready {
+                field: SettingsField::MaxClipboardItems,
+                value: String::from("50"),
             })
         );
     }
