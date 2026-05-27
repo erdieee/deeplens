@@ -232,7 +232,8 @@ The file is a JSON array:
 ```
 
 Use `cmd <query>` to search commands, or type an alias directly. The
-`{query}` placeholder receives the text after the alias.
+`{query}` placeholder receives the text after the alias. Commands can be edited
+from Settings > Commands without manually editing JSON.
 
 ## Shortcuts
 
@@ -274,6 +275,8 @@ Settings are grouped into:
   result row height, terminal app, excluded folders, broad-search limits,
   web search shortcuts, recents/history ranking, pins, clipboard history, and
   custom commands
+- `Commands`: add, edit, preview, and delete custom commands stored in
+  `~/.deeplens/commands.json`
 - `Style`: colors for the palette, text, chips, selected rows, and highlights
 - `Shortcuts`: global and in-app shortcuts
 

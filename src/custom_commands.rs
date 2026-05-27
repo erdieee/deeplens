@@ -46,6 +46,10 @@ impl Default for CustomCommand {
 }
 
 impl CommandBook {
+    pub fn from_commands(commands: Vec<CustomCommand>) -> Self {
+        Self { commands }
+    }
+
     pub fn load() -> Self {
         let Some(path) = commands_path() else {
             return Self::default();
@@ -109,10 +113,14 @@ impl CommandBook {
             .find(|command| command.id() == id)
             .map(|command| command.resolve(query))
     }
+
+    pub fn commands(&self) -> &[CustomCommand] {
+        &self.commands
+    }
 }
 
 impl CustomCommand {
-    fn is_valid(&self) -> bool {
+    pub fn is_valid(&self) -> bool {
         !self.alias.trim().is_empty() && !self.command.trim().is_empty()
     }
 
@@ -120,7 +128,7 @@ impl CustomCommand {
         self.alias.trim().to_owned()
     }
 
-    fn resolve(&self, query: &str) -> ResolvedCommand {
+    pub fn resolve(&self, query: &str) -> ResolvedCommand {
         let args = self.args_template.replace("{query}", query.trim());
         let command_line = join_command_line(&self.command, &args);
         let working_dir =
@@ -183,6 +191,56 @@ pub fn parse_command_query(input: &str) -> Option<String> {
     }
 
     Some(parts.next().map(str::trim).unwrap_or_default().to_owned())
+}
+
+pub fn save_commands(commands: &[CustomCommand]) -> Result<PathBuf, String> {
+    validate_commands(commands)?;
+
+    let path = commands_path().ok_or_else(|| String::from("Could not locate commands folder."))?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| String::from("Could not locate commands folder."))?;
+
+    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+
+    let text = serde_json::to_string_pretty(commands).map_err(|error| error.to_string())?;
+    fs::write(&path, text).map_err(|error| error.to_string())?;
+
+    Ok(path)
+}
+
+pub fn validate_commands(commands: &[CustomCommand]) -> Result<(), String> {
+    let mut aliases = Vec::new();
+
+    for (index, command) in commands.iter().enumerate() {
+        let row = index + 1;
+        let alias = command.alias.trim();
+        let executable = command.command.trim();
+
+        if alias.is_empty() && executable.is_empty() && command.name.trim().is_empty() {
+            continue;
+        }
+
+        if alias.is_empty() {
+            return Err(format!("Command {row} needs an alias."));
+        }
+
+        if executable.is_empty() {
+            return Err(format!("Command {row} needs a command."));
+        }
+
+        if alias.contains(char::is_whitespace) {
+            return Err(format!("Command {row} alias cannot contain spaces."));
+        }
+
+        let normalized_alias = alias.to_ascii_lowercase();
+        if aliases.contains(&normalized_alias) {
+            return Err(format!("Command alias {alias} is duplicated."));
+        }
+        aliases.push(normalized_alias);
+    }
+
+    Ok(())
 }
 
 pub fn run_command(command: &ResolvedCommand, settings: &AppSettings) -> Result<(), String> {
@@ -390,5 +448,28 @@ mod tests {
         let matches = book.search("open", &AppSettings::default());
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0].command_line, "code");
+    }
+
+    #[test]
+    fn validates_aliases_and_required_fields() {
+        let duplicate = vec![
+            CustomCommand {
+                alias: String::from("open"),
+                command: String::from("code"),
+                ..CustomCommand::default()
+            },
+            CustomCommand {
+                alias: String::from("OPEN"),
+                command: String::from("open"),
+                ..CustomCommand::default()
+            },
+        ];
+        assert!(super::validate_commands(&duplicate).is_err());
+
+        let missing_command = vec![CustomCommand {
+            alias: String::from("open"),
+            ..CustomCommand::default()
+        }];
+        assert!(super::validate_commands(&missing_command).is_err());
     }
 }

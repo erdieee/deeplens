@@ -12,7 +12,10 @@ use crate::app::system_actions::{
 };
 use crate::calculator;
 use crate::clipboard_history::{parse_clipboard_query, read_system_clipboard, ClipboardHistory};
-use crate::custom_commands::{parse_command_query, run_command, CommandBook, ResolvedCommand};
+use crate::custom_commands::{
+    parse_command_query, run_command, save_commands, validate_commands, CommandBook, CustomCommand,
+    ResolvedCommand,
+};
 use crate::history::SearchHistory;
 use crate::pins::Pins;
 use crate::query::{self, ParsedQuery};
@@ -156,6 +159,11 @@ pub enum Message {
     ResetSettings,
     SettingsChanged(SettingsField, String),
     SetSettingsTab(SettingsTab),
+    AddCommand,
+    DeleteCommand(usize),
+    CommandChanged(usize, CommandField, String),
+    ToggleCommandTerminal(usize),
+    TestCommand(usize),
     FocusSearchInput,
     KeyboardEvent(Event, event::Status, window::Id),
     Escape,
@@ -255,13 +263,15 @@ impl ResultAction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsTab {
     General,
+    Commands,
     Style,
     Shortcuts,
 }
 
 impl SettingsTab {
-    const ALL: [SettingsTab; 3] = [
+    const ALL: [SettingsTab; 4] = [
         SettingsTab::General,
+        SettingsTab::Commands,
         SettingsTab::Style,
         SettingsTab::Shortcuts,
     ];
@@ -269,10 +279,20 @@ impl SettingsTab {
     fn label(self) -> &'static str {
         match self {
             SettingsTab::General => "General",
+            SettingsTab::Commands => "Commands",
             SettingsTab::Style => "Style",
             SettingsTab::Shortcuts => "Shortcuts",
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommandField {
+    Name,
+    Alias,
+    Command,
+    ArgsTemplate,
+    WorkingDir,
 }
 
 pub struct DeeplensApp {
@@ -313,6 +333,7 @@ pub struct DeeplensApp {
     clipboard_history: ClipboardHistory,
     last_clipboard_poll: Option<Instant>,
     custom_commands: CommandBook,
+    command_form: Vec<CustomCommand>,
     actions_open: bool,
     selected_action: usize,
     mode_picker_open: bool,
@@ -327,6 +348,7 @@ impl DeeplensApp {
         let pins = Pins::load();
         let clipboard_history = ClipboardHistory::load();
         let custom_commands = CommandBook::load();
+        let command_form = custom_commands.commands().to_vec();
         let (main_window_id, open_main_window) = window::open(main_window_settings(&settings));
 
         (
@@ -368,6 +390,7 @@ impl DeeplensApp {
                 clipboard_history,
                 last_clipboard_poll: None,
                 custom_commands,
+                command_form,
                 actions_open: false,
                 selected_action: 0,
                 mode_picker_open: false,
@@ -547,6 +570,8 @@ impl DeeplensApp {
             }
             Message::ShowSettings => {
                 self.settings_form = SettingsForm::from(&self.settings);
+                self.custom_commands = CommandBook::load();
+                self.command_form = self.custom_commands.commands().to_vec();
                 if let Some(id) = self.settings_window_id {
                     let mut tasks = vec![
                         window::set_level(id, window::Level::AlwaysOnTop),
@@ -604,6 +629,27 @@ impl DeeplensApp {
             }
             Message::SetSettingsTab(tab) => {
                 self.settings_tab = tab;
+            }
+            Message::AddCommand => {
+                self.command_form.push(CustomCommand::default());
+                self.settings_tab = SettingsTab::Commands;
+            }
+            Message::DeleteCommand(index) => {
+                if index < self.command_form.len() {
+                    self.command_form.remove(index);
+                    self.status = String::from("Command removed");
+                }
+            }
+            Message::CommandChanged(index, field, value) => {
+                self.update_command_form(index, field, value);
+            }
+            Message::ToggleCommandTerminal(index) => {
+                if let Some(command) = self.command_form.get_mut(index) {
+                    command.open_in_terminal = !command.open_in_terminal;
+                }
+            }
+            Message::TestCommand(index) => {
+                self.preview_command(index);
             }
             Message::FocusSearchInput => {
                 if !self.hidden {
@@ -934,6 +980,7 @@ impl DeeplensApp {
     fn view_settings_fields(&self) -> Element<'_, Message> {
         match self.settings_tab {
             SettingsTab::General => self.view_general_settings(),
+            SettingsTab::Commands => self.view_command_settings(),
             SettingsTab::Style => self.view_style_settings(),
             SettingsTab::Shortcuts => self.view_shortcut_settings(),
         }
@@ -1141,6 +1188,140 @@ impl DeeplensApp {
             ),
         ]
         .spacing(8)
+        .into()
+    }
+
+    fn view_command_settings(&self) -> Element<'_, Message> {
+        let path = crate::custom_commands::commands_path()
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|| String::from("Commands path unavailable"));
+
+        let mut commands = column![
+            row![
+                column![
+                    text("Custom commands").size(13).color(TEXT),
+                    text(path).size(11).color(FAINT),
+                ]
+                .spacing(2)
+                .width(Length::Fill),
+                button(text("Add").size(12))
+                    .padding([6, 10])
+                    .style(chip_button)
+                    .on_press(Message::AddCommand),
+            ]
+            .spacing(10)
+            .align_y(Alignment::Center),
+            text("Use Save to write changes to ~/.deeplens/commands.json.")
+                .size(11)
+                .color(MUTED),
+        ]
+        .spacing(10);
+
+        if self.command_form.is_empty() {
+            commands = commands.push(
+                container(
+                    column![
+                        text("No commands configured").size(14).color(TEXT),
+                        text("Add a command, then run it with cmd or its alias.")
+                            .size(12)
+                            .color(MUTED),
+                    ]
+                    .spacing(6)
+                    .align_x(Alignment::Center),
+                )
+                .padding(18)
+                .width(Length::Fill)
+                .style(prompt_style),
+            );
+        }
+
+        for (index, command) in self.command_form.iter().enumerate() {
+            commands = commands.push(self.view_command_editor(index, command));
+        }
+
+        commands.into()
+    }
+
+    fn view_command_editor<'a>(
+        &self,
+        index: usize,
+        command: &'a CustomCommand,
+    ) -> Element<'a, Message> {
+        let title = if command.alias.trim().is_empty() {
+            format!("Command {}", index + 1)
+        } else if command.name.trim().is_empty() {
+            command.alias.trim().to_owned()
+        } else {
+            format!("{} ({})", command.name.trim(), command.alias.trim())
+        };
+
+        container(
+            column![
+                row![
+                    text(title).size(13).color(TEXT).width(Length::Fill),
+                    button(text("Preview").size(12))
+                        .padding([5, 8])
+                        .style(chip_button)
+                        .on_press(Message::TestCommand(index)),
+                    button(
+                        text(if command.open_in_terminal {
+                            "Terminal On"
+                        } else {
+                            "Terminal Off"
+                        })
+                        .size(12)
+                    )
+                    .padding([5, 8])
+                    .style(chip_button)
+                    .on_press(Message::ToggleCommandTerminal(index)),
+                    button(text("Delete").size(12))
+                        .padding([5, 8])
+                        .style(chip_button)
+                        .on_press(Message::DeleteCommand(index)),
+                ]
+                .spacing(6)
+                .align_y(Alignment::Center),
+                command_field(
+                    index,
+                    CommandField::Name,
+                    "Name",
+                    &command.name,
+                    "Display name shown in command results.",
+                ),
+                command_field(
+                    index,
+                    CommandField::Alias,
+                    "Alias",
+                    &command.alias,
+                    "Short trigger typed directly in the search box.",
+                ),
+                command_field(
+                    index,
+                    CommandField::Command,
+                    "Command",
+                    &command.command,
+                    "Executable or shell command to run.",
+                ),
+                command_field(
+                    index,
+                    CommandField::ArgsTemplate,
+                    "Args template",
+                    &command.args_template,
+                    "Arguments appended to the command. Use {query} for alias text.",
+                ),
+                command_field(
+                    index,
+                    CommandField::WorkingDir,
+                    "Working dir",
+                    &command.working_dir,
+                    "Optional working directory. ~ is expanded.",
+                ),
+            ]
+            .spacing(8),
+        )
+        .padding(10)
+        .width(Length::Fill)
+        .style(prompt_style)
         .into()
     }
 
@@ -2652,6 +2833,10 @@ impl DeeplensApp {
                 let history_error = self.history.save().err();
                 let pins_error = self.pins.save().err();
                 let clipboard_error = self.clipboard_history.save().err();
+                let commands_error = save_commands(&self.command_form).err();
+                if commands_error.is_none() {
+                    self.custom_commands = CommandBook::from_commands(self.command_form.clone());
+                }
                 let shortcut_error = self.reload_global_shortcut().err();
                 self.status = match settings::save(&self.settings) {
                     Ok(path) => format!("Settings saved to {}", path.display()),
@@ -2664,6 +2849,9 @@ impl DeeplensApp {
                     self.status = format_error_status(error);
                 }
                 if let Some(error) = clipboard_error {
+                    self.status = format_error_status(error);
+                }
+                if let Some(error) = commands_error {
                     self.status = format_error_status(error);
                 }
                 if let Some(error) = shortcut_error {
@@ -2745,6 +2933,34 @@ impl DeeplensApp {
 
     fn update_settings_form(&mut self, field: SettingsField, value: String) {
         update_settings_form_value(&mut self.settings_form, field, value);
+    }
+
+    fn update_command_form(&mut self, index: usize, field: CommandField, value: String) {
+        let Some(command) = self.command_form.get_mut(index) else {
+            return;
+        };
+
+        match field {
+            CommandField::Name => command.name = value,
+            CommandField::Alias => command.alias = value,
+            CommandField::Command => command.command = value,
+            CommandField::ArgsTemplate => command.args_template = value,
+            CommandField::WorkingDir => command.working_dir = value,
+        }
+    }
+
+    fn preview_command(&mut self, index: usize) {
+        let Some(command) = self.command_form.get(index) else {
+            return;
+        };
+
+        if let Err(error) = validate_commands(std::slice::from_ref(command)) {
+            self.status = format_error_status(error);
+            return;
+        }
+
+        let resolved = command.resolve("example");
+        self.status = format!("Command preview: {}", resolved.command_line);
     }
 
     fn reload_global_shortcut(&mut self) -> Result<(), String> {
@@ -3087,8 +3303,10 @@ impl DeeplensApp {
             || self.status == "No clipboard results"
             || self.status == "Command started"
             || self.status == "Command unavailable"
+            || self.status == "Command removed"
             || self.status == "Custom commands disabled"
             || self.status == "No command results"
+            || self.status.starts_with("Command preview: ")
             || self.status == "Actions"
             || self.status == "Actions disabled"
             || self.status == "Filename copied"
@@ -3230,6 +3448,32 @@ fn settings_field<'a>(
             .size(13)
             .style(search_input_style)
             .width(Length::Fixed(150.0)),
+    ]
+    .spacing(10)
+    .align_y(Alignment::Center)
+    .into()
+}
+
+fn command_field<'a>(
+    index: usize,
+    field: CommandField,
+    label: &'static str,
+    value: &'a str,
+    help: &'static str,
+) -> Element<'a, Message> {
+    row![
+        column![
+            text(label).size(12).color(MUTED),
+            text(help).size(11).color(FAINT),
+        ]
+        .spacing(2)
+        .width(Length::Fill),
+        text_input("", value)
+            .on_input(move |value| Message::CommandChanged(index, field, value))
+            .padding([6, 8])
+            .size(13)
+            .style(search_input_style)
+            .width(Length::Fixed(220.0)),
     ]
     .spacing(10)
     .align_y(Alignment::Center)
