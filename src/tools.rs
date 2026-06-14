@@ -42,7 +42,7 @@ fn app_resource_paths() -> Vec<PathBuf> {
 }
 
 fn common_tool_paths() -> Vec<PathBuf> {
-    [
+    let mut paths: Vec<PathBuf> = [
         "/opt/homebrew/bin",
         "/usr/local/bin",
         "/opt/local/bin",
@@ -53,7 +53,13 @@ fn common_tool_paths() -> Vec<PathBuf> {
     ]
     .into_iter()
     .map(PathBuf::from)
-    .collect()
+    .collect();
+
+    if let Some(home) = env::var_os("HOME") {
+        paths.push(PathBuf::from(home).join(".cargo").join("bin"));
+    }
+
+    paths
 }
 
 #[cfg(test)]
@@ -66,5 +72,13 @@ mod tests {
 
         assert!(paths.contains(&PathBuf::from("/opt/homebrew/bin")));
         assert!(paths.contains(&PathBuf::from("/usr/local/bin")));
+    }
+
+    #[test]
+    fn common_paths_include_cargo_bin_when_home_exists() {
+        if let Some(home) = env::var_os("HOME") {
+            let paths = common_tool_paths();
+            assert!(paths.contains(&PathBuf::from(home).join(".cargo").join("bin")));
+        }
     }
 }

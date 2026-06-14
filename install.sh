@@ -113,6 +113,9 @@ PLIST
 printf 'APPL????' > "$APP_CONTENTS/PkgInfo"
 touch "$APP_BUNDLE"
 
+printf '\nRunning DeepLens doctor...\n'
+"$BIN_DIR/DeepLens" --doctor
+
 printf '\nDeepLens installed to %s/DeepLens\n' "$BIN_DIR"
 printf 'DeepLens.app installed to %s\n' "$APP_BUNDLE"
 
@@ -127,3 +130,4 @@ esac
 printf '\nRun with:\n'
 printf '  DeepLens\n'
 printf '  open "%s"\n' "$APP_BUNDLE"
+printf '  DeepLens --doctor\n'

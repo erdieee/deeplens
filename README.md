@@ -103,6 +103,7 @@ The install script:
 - installs the `DeepLens` binary to `~/.local/bin`
 - creates `DeepLens.app` in `/Applications` when writable, otherwise in
   `~/Applications`
+- runs `DeepLens --doctor` to verify runtime dependencies
 
 To install to another prefix:
 
@@ -134,6 +135,24 @@ The binary is created at:
 ```sh
 target/release/DeepLens
 ```
+
+## Verify Installation
+
+Run the built-in doctor:
+
+```sh
+DeepLens --doctor
+```
+
+or from a source checkout:
+
+```sh
+cargo run -- --doctor
+```
+
+The doctor checks the runtime `PATH` that DeepLens uses and reports whether
+`rga`, `fd`, `zoxide`, and the configured calculator command are available.
+Missing required tools include the install command to fix them.
 
 macOS may require accessibility/input permissions before global shortcuts are
 delivered to apps launched from Terminal.
@@ -387,10 +406,10 @@ Library, Library/Caches, Library/Developer, .Trash, node_modules, target, .git
 
 ## Packaging Dependencies
 
-DeepLens looks for `rga`, `fd`, and `zoxide` on `PATH`. The installed macOS app
-also prepends common tool locations such as `/opt/homebrew/bin` and
-`/usr/local/bin`, because apps opened from Finder or the Dock do not inherit
-your shell PATH.
+DeepLens looks for `rga`, `fd`, `zoxide`, and the configured calculator command
+on `PATH`. The installed macOS app also prepends common tool locations such as
+`/opt/homebrew/bin`, `/usr/local/bin`, and `~/.cargo/bin`, because apps opened
+from Finder or the Dock do not inherit your shell PATH.
 
 For a user-friendly desktop release, there are three practical options:
 
@@ -414,6 +433,12 @@ for `/project` scope shortcuts to be useful.
 ## Troubleshooting
 
 `ripgrep-all (rga) was not found`
+
+Run:
+
+```sh
+DeepLens --doctor
+```
 
 Install it and restart DeepLens:
 
